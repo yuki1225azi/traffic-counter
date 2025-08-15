@@ -123,7 +123,6 @@ body{
 
 /* 入力欄と設定 */
 .schedule-inputs { display: flex; flex-direction: row; gap: 0.6rem; margin-bottom: 0.6rem; }
-.schedule-inputs label { flex: initial; } /* ★追加: ボックスが不必要に伸びるのを防ぐ */
 .settings-grid{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem 0.8rem; }
 .settings-grid label, .schedule-inputs label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.8rem; flex: 1; }
 input[type="number"], input[type="datetime-local"], select { width: 100%; padding: 0.4rem; border: 1px solid var(--border-light); border-radius: 4px; font-size: 0.85rem; }
