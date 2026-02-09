@@ -1998,7 +1998,7 @@ function formatTimestamp(d){
         [...recordsHourly].reverse().forEach(row => insertLogRow(row));
       }
 
-      toast("中断箇所から測定を再開しました（結合モード）");
+      toast("中断箇所から測定を再開しました。");
       saveBackup();
       startBackupLoop();
       return ret;
