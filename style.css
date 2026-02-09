@@ -66,8 +66,19 @@ body{
   #settings-panel { grid-area: settings; }
 
   /* 設定パネル内の項目を縦1列に変更 */
-  #settings-panel .settings-grid {
+#settings-panel .settings-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* ▼▼▼ ここから追加：PCのときだけ高さを自動で伸ばす ▼▼▼ */
+  #info-panel {
+    height: 100%;      /* パネル自体の高さをグリッド枠に合わせる */
+    overflow: hidden;  /* はみ出し防止 */
+  }
+
+  #log-display {
+    height: auto;      /* スマホの「200px固定」を解除 */
+    flex: 1;           /* 残りのスペースを全部埋める */
   }
 }
 
@@ -84,7 +95,11 @@ body{
   border: 2px solid var(--border-color-default);
   border-radius: 8px; transition: border-color .3s ease;
 }
-#canvas.analyzing{ border-color: var(--border-color-analyzing); }
+#canvas.analyzing{
+  border-color: var(--border-color-analyzing);
+  border-width: 5px;                            /* 枠線を太くする */
+  box-shadow: 0 0 20px rgba(229, 57, 53, 0.6);  /* 赤く光るエフェクトを追加 */
+}
 
 /* リアルタイム統計 */
 #realtime-stats {
@@ -113,6 +128,40 @@ body{
 .panel h3 {
   margin: 0 0 0.6rem; font-size: 1rem; font-weight: bold;
   border-bottom: 1px solid var(--border-light); padding-bottom: 0.4rem;
+}
+
+/* 設定パネル：タイトル右側のインフォマーク */
+#settings-panel .panel-title-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin: 0 0 0.6rem;
+  border-bottom: 1px solid var(--border-light);
+  padding-bottom: 0.4rem;
+}
+#settings-panel .panel-title-row h3{
+  margin: 0;
+  border-bottom: none;
+  padding-bottom: 0;
+}
+#settings-panel .info-btn{
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid #ccc;
+
+  background: #f0f2f5;
+  color: #555;
+  font-weight: bold;
+  font-size: 0.85rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+#settings-panel .info-btn:hover{
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
 }
 
 /* タブ */
@@ -154,13 +203,61 @@ input[type="number"], input[type="datetime-local"], select {
 }
 
 /* 情報・ログ */
-#info-panel { display: flex; flex-direction: column; }
-.geo{ display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.5rem; font-size: 0.8rem; }
+#info-panel { 
+  display: flex; 
+  flex-direction: column;
+  
+  /* ▼▼▼ 追加：高さ制限とスクロールの基点を作る ▼▼▼ */
+  height: 100%;       /* グリッドエリアの高さいっぱいに広げる */
+  min-height: 0;      /* Flexアイテムがコンテンツ以上に縮めるようにする（重要） */
+  overflow: hidden;   /* はみ出した分は隠す（スクロールは中の#log-displayでやる） */
+}
+
+/* ▼▼▼ 追加・修正：ログヘッダーの横並び設定 ▼▼▼ */
+.log-header {
+  display: flex;
+  align-items: baseline;        /* 文字のベースライン（下）を揃える */
+  justify-content: space-between; /* タイトルを左、緯度経度を右端へ */
+  flex-wrap: wrap;              /* 画面が狭いときは折り返す */
+  gap: 12px;                    /* タイトルと情報の間の隙間 */
+  
+  border-bottom: 1px solid var(--border-light); /* 線はここに移動 */
+  padding-bottom: 0.4rem;
+  margin-bottom: 0.6rem;
+}
+
+/* 既存のh3スタイルの上書き（線を消して余白をなくす） */
+.log-header h3 {
+  margin: 0;
+  border-bottom: none;
+  padding-bottom: 0;
+  /* フォントサイズは既存の 1rem (約15px) 太字 */
+}
+
+/* 緯度経度の見た目調整（タイトルと区別をつける） */
+.geo {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.75rem;       /* タイトルより小さく (約12px) */
+  color: #666;              /* 真っ黒ではなく少しグレーに */
+  font-weight: normal;      /* 細字にする */
+  margin: 0;                /* 余計な余白を削除 */
+}
+
+/* 数値部分だけ少し強調 */
+.geo strong {
+  color: #333;              /* 数値は濃い黒で */
+  font-weight: 600;
+  margin-left: 2px;
+}
 #log-display{
-  height: 115px;
-  overflow-y: auto;
+  height: 150px;      /* ★スマホでは150pxに固定する */
+  overflow-y: auto;   /* 200pxを超えたらスクロール */
+  
   border: 1px solid var(--border-light);
   border-radius: 4px;
+  
+  /* flexの設定はここでは書かない（PC用で書く） */
 }
 #log-table{ width: 100%; border-collapse: collapse; font-size: 0.8rem; }
 #log-table th{
