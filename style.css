@@ -29,7 +29,7 @@ body{
 }
 #app-title{ font-size: 1.5rem; color: #2c3e50; margin: 0 0 0.4rem 0; }
 #status-indicator{
-  display: flex; align-items: center; gap: 8px; font-weight: bold;
+  display: flex; align-items: center; gap: 8px; font-weight: normal;
   color: #0056b3; min-width: 280px; transition: opacity 0.5s ease-out;
 }
 #status-indicator.hidden { opacity: 0; }
