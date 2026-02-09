@@ -302,7 +302,7 @@ input[type="number"], input[type="datetime-local"], select {
   
   /* 2. モデル読み込み中: 文字サイズ縮小、2行化防止 */
   #status-indicator {
-    font-size: 0.9rem !important; /* 文字を小さく */
+    font-size: 0.8rem !important; /* 文字を小さく */
     flex-wrap: nowrap !important; /* 絶対に折り返さない */
   }
 
