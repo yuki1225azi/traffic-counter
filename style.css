@@ -262,6 +262,7 @@ input[type="number"], input[type="datetime-local"], select {
 #log-table{ width: 100%; border-collapse: collapse; font-size: 0.8rem; }
 #log-table th{
   position: sticky; top: 0; background: #f7f7f7; z-index: 1; padding: 5px; border-bottom: 1px solid var(--border-light);
+font-weight: normal;
 }
 #log-table td{ border-bottom: 1px solid var(--border-light); padding: 4px; text-align: center; }
 
