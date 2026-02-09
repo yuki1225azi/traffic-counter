@@ -1,54 +1,145 @@
-/* =========================================
-   スマホ表示の文字サイズ・レイアウト最終調整
-   ========================================= */
-@media (max-width: 600px) {
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+  <title>リアルタイム交通量調査AI</title>
+  <link rel="stylesheet" href="./style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.2.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+  <script defer src="./script.js"></script>
+</head>
+<body>
+  <div id="container">
+    <header id="app-header">
+      <h1 id="app-title">リアルタイム交通量調査AI</h1>
+      <div id="status-indicator">
+        <div id="loading-model">モデル読み込み中..</div>
+        <progress id="loading-progress" max="100" value="0"></progress>
+        <span id="loading-percentage">0%</span>
+      </div>
+    </header>
 
-  /* 1. 「〇時台の交通量」「測定ログ」「設定」の文字を小さくして1行にする */
-  #current-hour-title,
-  .panel h3,
-  .log-header h3,
-  #settings-panel h3 {
-    font-size: 0.9rem !important; /* 16px → 約14px に縮小 */
-    white-space: nowrap !important; /* 絶対に改行させない */
-    overflow: hidden;
-    text-overflow: ellipsis;      /* 万が一はみ出たら「...」にする */
-    line-height: 1.4;
-  }
+    <div id="main-layout">
+      <div id="video-container">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="canvas"></canvas>
+      </div>
 
-  /* 2. カウントカード（トラック：0台など）を1行に収める */
-  .count-item {
-    font-size: 0.7rem !important;   /* 文字を小さく (約11px) */
-    padding: 4px 2px !important;    /* 余白を詰める */
-    white-space: nowrap !important; /* 改行禁止 */
-    text-align: center;             /* 中央揃え */
-    display: flex;
-    justify-content: center;
-    align-items: center;
-  }
-  /* スマホでは3列だと狭すぎるので、2列にする（前回提案の補強） */
-  .counts {
-    grid-template-columns: repeat(2, 1fr) !important;
-  }
+      <div class="panel-group">
+        <nav class="tabs">
+          <button class="tab-link active" data-tab="realtime">即時測定</button>
+          <button class="tab-link" data-tab="schedule">予約測定</button>
+        </nav>
+        <div id="tab-realtime" class="tab-content active"><div class="panel"><button id="toggle-analysis-btn" class="btn btn-green" disabled>開始</button></div></div>
+        <div id="tab-schedule" class="tab-content"><div class="panel">
+            <div class="schedule-inputs"><label>開始日時<input type="datetime-local" id="auto-start-dt"></label><label>終了日時<input type="datetime-local" id="auto-end-dt"></label></div>
+            <button id="reserve-btn" class="btn btn-blue">予約</button>
+        </div></div>
+      </div>
 
-  /* 3. 予約測定の日時入力を「縦並び」にして潰れを防ぐ */
-  .schedule-inputs {
-    flex-direction: column !important; /* 横並びをやめて縦積みに */
-    gap: 10px !important;
-  }
-  
-  /* 入力欄の文字色を濃くして、グレーで見にくい問題を解消 */
-  input[type="datetime-local"] {
-    font-size: 1rem !important;    /* 入力文字を大きくして見やすく */
-    color: #333 !important;        /* 文字色を濃い黒に */
-    background: #fff !important;   /* 背景を白に */
-    opacity: 1 !important;         /* 透明度を解除 */
-    min-height: 40px;              /* タップしやすい高さに */
-  }
-  
-  /* ラベルも見やすく調整 */
-  .schedule-inputs label {
-    font-size: 0.9rem !important;
-    font-weight: bold;
-    color: #333;
-  }
-}
+      <section id="realtime-stats">
+        <h2 id="current-hour-title">--時台の交通量</h2>
+        <div class="counts">
+          <div class="count-item car">乗用車：<span id="count-car">0</span>台</div>
+          <div class="count-item bus">バス：<span id="count-bus">0</span>台</div>
+          <div class="count-item truck">トラック：<span id="count-truck">0</span>台</div>
+          <div class="count-item motorcycle">バイク：<span id="count-motorcycle">0</span>台</div>
+          <div class="count-item bicycle">自転車：<span id="count-bicycle">0</span>台</div>
+          <div class="count-item person">歩行者：<span id="count-person">0</span>人</div>
+        </div>
+      </section>
+
+      <div class="panel" id="info-panel">
+         <div class="log-header">
+           <h3>測定ログ</h3>
+           <div class="geo">
+             <span>緯度：<strong id="geo-lat">未取得</strong></span>
+             <span>経度：<strong id="geo-lng">未取得</strong></span>
+           </div>
+         </div>
+         <div id="log-display">
+           <table id="log-table">
+             <thead><tr><th>日時</th><th>乗用車</th><th>バス</th><th>トラック</th><th>バイク</th><th>自転車</th><th>歩行者</th></tr></thead>
+             <tbody id="log-body"></tbody>
+           </table>
+         </div>
+      </div>
+      
+      <div class="panel" id="settings-panel">
+        <div class="panel-title-row">
+          <h3>設定</h3>
+          <button id="settings-info-btn" class="info-btn" type="button" aria-label="設定の説明">i</button>
+        </div>
+<div class="settings-grid">
+          <label>測定対象
+            <select id="count-mode">
+              <option value="vehicle">車両</option>
+              <option value="pedestrian">歩行者</option>
+            </select>
+          </label>
+
+          <label>検知感度
+            <select id="score-th">
+              <option value="0.1">10%</option>
+              <option value="0.2">20%</option>
+              <option value="0.3">30%</option>
+              <option value="0.4">40%</option>
+              <option value="0.5" selected>50%</option>
+              <option value="0.6">60%</option>
+              <option value="0.7">70%</option>
+              <option value="0.8">80%</option>
+              <option value="0.9">90%</option>
+            </select>
+          </label>
+
+          <label>解析頻度
+            <select id="max-fps">
+              <option value="5">5fps</option>
+              <option value="10">10fps</option>
+              <option value="15" selected>15fps</option>
+              <option value="30">30fps</option>
+            </select>
+          </label>
+
+          <label>検知確定
+            <select id="min-hits">
+              <option value="1">1frm</option>
+              <option value="3" selected>3frm</option>
+              <option value="5">5frm</option>
+              <option value="7">7frm</option>
+              <option value="9">9frm</option>
+            </select>
+          </label>
+
+          <label>見失い猶予
+            <select id="max-lost">
+              <option value="5">5frm</option>
+              <option value="10">10frm</option>
+              <option value="15" selected>15frm</option>
+              <option value="20">20frm</option>
+              <option value="25">25frm</option>
+              <option value="30">30frm</option>
+            </select>
+          </label>
+
+          <label>重なり判定
+            <select id="iou-th">
+              <option value="0.1">10%</option>
+              <option value="0.2">20%</option>
+              <option value="0.3">30%</option>
+              <option value="0.4" selected>40%</option>
+              <option value="0.5">50%</option>
+              <option value="0.6">60%</option>
+              <option value="0.7">70%</option>
+              <option value="0.8">80%</option>
+              <option value="0.9">90%</option>
+            </select>
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="toast" class="hidden">通知</div>
+</body>
+</html>
