@@ -35,16 +35,15 @@ body{
 #status-indicator.hidden { opacity: 0; }
 #loading-progress{ width: 150px; height: 10px; }
 
-/* ★★★修正箇所：レイアウトの定義★★★ */
-/* デフォルト（モバイル）は縦積み */
+/* レイアウト定義 */
 #main-layout{ display: flex; flex-direction: column; gap: 1rem; }
 
-/* ノートパソコン向け3列レイアウト */
+/* PC向けレイアウト */
 @media (min-width: 1024px) {
   #main-layout {
     display: grid;
-    grid-template-columns: 2fr 1.0fr 0.5fr; /* 左・中央・右の列の比率 */
-    grid-template-rows: auto auto 1fr;      /* 中央列の縦積みのための行定義 */
+    grid-template-columns: 2fr 1.0fr 0.5fr;
+    grid-template-rows: auto auto 1fr;
     grid-template-areas:
       "video controls settings"
       "video counts settings"
@@ -53,40 +52,26 @@ body{
     height: calc(100vh - 6rem);
 
     #video-container {
-      aspect-ratio: unset;   /* デフォルトのアスペクト比指定を解除（PC表示は従来どおり） */
+      aspect-ratio: unset;
       flex-grow: 1;
       min-height: 0;
     }
   }
-  /* 各要素をグリッドの所定の位置に配置 */
   #video-container { grid-area: video; }
   .panel-group { grid-area: controls; }
   #realtime-stats { grid-area: counts; }
   #info-panel { grid-area: logs; }
   #settings-panel { grid-area: settings; }
-
-  /* 設定パネル内の項目を縦1列に変更 */
-#settings-panel .settings-grid {
-    grid-template-columns: 1fr;
-  }
-
-  /* ▼▼▼ ここから追加：PCのときだけ高さを自動で伸ばす ▼▼▼ */
-  #info-panel {
-    height: 100%;      /* パネル自体の高さをグリッド枠に合わせる */
-    overflow: hidden;  /* はみ出し防止 */
-  }
-
-  #log-display {
-    height: auto;      /* スマホの「200px固定」を解除 */
-    flex: 1;           /* 残りのスペースを全部埋める */
-  }
+  #settings-panel .settings-grid { grid-template-columns: 1fr; }
+  #info-panel { height: 100%; overflow: hidden; }
+  #log-display { height: auto; flex: 1; }
 }
 
-/* 映像 */
+/* 映像エリア */
 #video-container{
   position: relative; width: 100%; background: #000;
   border-radius: 8px; overflow: hidden; box-shadow: var(--panel-shadow);
-  aspect-ratio: 16 / 9; /* デフォルトは横長 */
+  aspect-ratio: 16 / 9;
 }
 #video, #canvas{
   position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;
@@ -97,8 +82,8 @@ body{
 }
 #canvas.analyzing{
   border-color: var(--border-color-analyzing);
-  border-width: 5px;                            /* 枠線を太くする */
-  box-shadow: 0 0 20px rgba(229, 57, 53, 0.6);  /* 赤く光るエフェクトを追加 */
+  border-width: 5px;
+  box-shadow: 0 0 20px rgba(229, 57, 53, 0.6);
 }
 
 /* リアルタイム統計 */
@@ -130,39 +115,19 @@ body{
   border-bottom: 1px solid var(--border-light); padding-bottom: 0.4rem;
 }
 
-/* 設定パネル：タイトル右側のインフォマーク */
+/* 設定パネル */
 #settings-panel .panel-title-row{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  margin: 0 0 0.6rem;
-  border-bottom: 1px solid var(--border-light);
-  padding-bottom: 0.4rem;
+  display:flex; align-items:center; justify-content:space-between;
+  margin: 0 0 0.6rem; border-bottom: 1px solid var(--border-light); padding-bottom: 0.4rem;
 }
-#settings-panel .panel-title-row h3{
-  margin: 0;
-  border-bottom: none;
-  padding-bottom: 0;
-}
+#settings-panel .panel-title-row h3{ margin: 0; border-bottom: none; padding-bottom: 0; }
 #settings-panel .info-btn{
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 1px solid #ccc;
-
-  background: #f0f2f5;
-  color: #555;
-  font-weight: bold;
-  font-size: 0.85rem;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%; border: 1px solid #ccc;
+  background: #f0f2f5; color: #555; font-weight: bold; font-size: 0.85rem;
+  line-height: 1; display: inline-flex; align-items: center; justify-content: center;
   cursor: pointer;
 }
-#settings-panel .info-btn:hover{
-  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
-}
+#settings-panel .info-btn:hover{ box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
 
 /* タブ */
 .panel-group { border-radius: 8px; box-shadow: var(--panel-shadow); overflow: hidden; border: 1px solid var(--border-light); }
@@ -193,7 +158,7 @@ body{
 
 /* 入力欄と設定 */
 .schedule-inputs { display: flex; flex-direction: row; gap: 0.6rem; margin-bottom: 0.6rem; }
-.schedule-inputs label { flex: initial; } /* ★追加: ボックスが不必要に伸びるのを防ぐ */
+.schedule-inputs label { flex: initial; }
 .settings-grid{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem 0.8rem; }
 .settings-grid label, .schedule-inputs label {
   display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.8rem; flex: 1;
@@ -204,60 +169,20 @@ input[type="number"], input[type="datetime-local"], select {
 
 /* 情報・ログ */
 #info-panel { 
-  display: flex; 
-  flex-direction: column;
-  
-  /* ▼▼▼ 追加：高さ制限とスクロールの基点を作る ▼▼▼ */
-  height: 100%;       /* グリッドエリアの高さいっぱいに広げる */
-  min-height: 0;      /* Flexアイテムがコンテンツ以上に縮めるようにする（重要） */
-  overflow: hidden;   /* はみ出した分は隠す（スクロールは中の#log-displayでやる） */
+  display: flex; flex-direction: column;
+  height: 100%; min-height: 0; overflow: hidden;
 }
-
-/* ▼▼▼ 追加・修正：ログヘッダーの横並び設定 ▼▼▼ */
 .log-header {
-  display: flex;
-  align-items: baseline;        /* 文字のベースライン（下）を揃える */
-  justify-content: space-between; /* タイトルを左、緯度経度を右端へ */
-  flex-wrap: wrap;              /* 画面が狭いときは折り返す */
-  gap: 12px;                    /* タイトルと情報の間の隙間 */
-  
-  border-bottom: 1px solid var(--border-light); /* 線はここに移動 */
-  padding-bottom: 0.4rem;
-  margin-bottom: 0.6rem;
+  display: flex; align-items: baseline; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px;
+  border-bottom: 1px solid var(--border-light); padding-bottom: 0.4rem; margin-bottom: 0.6rem;
 }
-
-/* 既存のh3スタイルの上書き（線を消して余白をなくす） */
-.log-header h3 {
-  margin: 0;
-  border-bottom: none;
-  padding-bottom: 0;
-  /* フォントサイズは既存の 1rem (約15px) 太字 */
-}
-
-/* 緯度経度の見た目調整（タイトルと区別をつける） */
-.geo {
-  display: flex;
-  gap: 1rem;
-  font-size: 0.75rem;       /* タイトルより小さく (約12px) */
-  color: #666;              /* 真っ黒ではなく少しグレーに */
-  font-weight: normal;      /* 細字にする */
-  margin: 0;                /* 余計な余白を削除 */
-}
-
-/* 数値部分だけ少し強調 */
-.geo strong {
-  color: #333;              /* 数値は濃い黒で */
-  font-weight: 600;
-  margin-left: 2px;
-}
+.log-header h3 { margin: 0; border-bottom: none; padding-bottom: 0; }
+.geo { display: flex; gap: 1rem; font-size: 0.75rem; color: #666; font-weight: normal; margin: 0; }
+.geo strong { color: #333; font-weight: 600; margin-left: 2px; }
 #log-display{
-  height: 150px;      /* ★スマホでは150pxに固定する */
-  overflow-y: auto;   /* 200pxを超えたらスクロール */
-  
-  border: 1px solid var(--border-light);
-  border-radius: 4px;
-  
-  /* flexの設定はここでは書かない（PC用で書く） */
+  height: 150px; overflow-y: auto;
+  border: 1px solid var(--border-light); border-radius: 4px;
 }
 #log-table{ width: 100%; border-collapse: collapse; font-size: 0.8rem; }
 #log-table th{
@@ -275,34 +200,36 @@ input[type="number"], input[type="datetime-local"], select {
 #toast:not(.hidden){ opacity:1; bottom:50px; }
 .hidden{ display:none !important; }
 
-/* ======= ここから：CSSのみでの修正（タッチ端末に限定）======= */
-/* スマホ/タブレットなど「pointerが粗い」端末だけ、端末の向きで比率を切替 */
-@media (pointer: coarse) and (orientation: portrait) {
-  #video-container { aspect-ratio: 9 / 16; }  /* 縦向き → 縦長 */
-}
-@media (pointer: coarse) and (orientation: landscape) {
-  #video-container { aspect-ratio: 16 / 9; }  /* 横向き → 横長 */
-}
+/* タッチ端末向け調整 */
+@media (pointer: coarse) and (orientation: portrait) { #video-container { aspect-ratio: 9 / 16; } }
+@media (pointer: coarse) and (orientation: landscape) { #video-container { aspect-ratio: 16 / 9; } }
+
+
 /* =========================================
-   タイトル改行防止パッチ
+   スマホ・モバイル表示最適化（まとめ）
    ========================================= */
 @media (max-width: 600px) {
-  #app-title {
-    /* 文字サイズを標準の1.5remから小さくする */
-    font-size: 1.2rem !important;
-    
-    /* 強制的に1行で表示する */
-    white-space: nowrap;
-    
-    /* 横並びのレイアウト調整 */
-    justify-content: center;
-    width: 100%;
-  }
 
-  /* 横にあるインフォボタンも少し小さくしてスペースを確保 */
-  #app-title .title-info-btn {
-    width: 20px !important;
-    height: 20px !important;
-    font-size: 0.7rem !important;
+  /* --- 1. タイトル＆ヘッダーの1行化 --- */
+  #app-title {
+    font-size: 1.1rem !important;
+    white-space: nowrap;
+    margin-bottom: 0.2rem;
+    width: 100%;
+    justify-content: center;
   }
-}
+  
+  /* --- 2. 読み込みインジケーターの小型化 --- */
+  #status-indicator {
+    width: 100%;
+    min-width: auto !important;
+    gap: 8px !important;
+    font-size: 0.8rem !important;
+    font-weight: normal !important;
+    justify-content: center;
+  }
+  #loading-model { white-space: nowrap; }
+  #loading-progress {
+    width: auto !important;
+    flex: 0 1 100px;
+    height: 6px;
