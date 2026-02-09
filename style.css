@@ -372,3 +372,10 @@ font-weight: normal;
     letter-spacing: -0.5px;        /* 文字間を詰める */
   }
 }
+
+/* --- 8. 測定ログの表ヘッダー：文字サイズ縮小 & 余白詰め --- */
+  #log-table th {
+    font-size: 0.7rem !important;   /* 文字サイズを小さく (約10.5px) */
+    padding: 4px 1px !important;    /* 左右の余白を詰めて、文字が入りきるようにする */
+    white-space: nowrap !important; /* 勝手に改行されないようにする */
+  }
