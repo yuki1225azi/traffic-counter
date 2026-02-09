@@ -283,4 +283,26 @@ input[type="number"], input[type="datetime-local"], select {
 @media (pointer: coarse) and (orientation: landscape) {
   #video-container { aspect-ratio: 16 / 9; }  /* 横向き → 横長 */
 }
-/* ======= ここまで ======= */
+/* =========================================
+   タイトル改行防止パッチ
+   ========================================= */
+@media (max-width: 600px) {
+  #app-title {
+    /* 文字サイズを標準の1.5remから小さくする */
+    font-size: 1.2rem !important;
+    
+    /* 強制的に1行で表示する */
+    white-space: nowrap;
+    
+    /* 横並びのレイアウト調整 */
+    justify-content: center;
+    width: 100%;
+  }
+
+  /* 横にあるインフォボタンも少し小さくしてスペースを確保 */
+  #app-title .title-info-btn {
+    width: 20px !important;
+    height: 20px !important;
+    font-size: 0.7rem !important;
+  }
+}
