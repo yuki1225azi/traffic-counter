@@ -1502,7 +1502,7 @@ function updateHourTitle(){
     const oneTouch = unknownOneTouch || 0;
     const total = confirmed + oneTouch;
     
-    DOM.hourTitle.textContent = `${h}時台の通行量：計 ${total} 人(うち、判定不能 ${oneTouch} 人)`;
+    DOM.hourTitle.textContent = `${h}時台の通行量：計${total}人(うち、判定不能 ${oneTouch}人)`;
     return;
   }
 
