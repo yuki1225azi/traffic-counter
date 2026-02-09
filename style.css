@@ -283,3 +283,88 @@ input[type="number"], input[type="datetime-local"], select {
 @media (pointer: coarse) and (orientation: landscape) {
   #video-container { aspect-ratio: 16 / 9; }  /* 横向き → 横長 */
 }
+
+/* =========================================
+   スマホ・モバイル表示最適化（最終調整版）
+   ========================================= */
+@media (max-width: 600px) {
+
+  /* 1. タイトル: 文字サイズを小さくして改行を防止 */
+  #app-title {
+    font-size: 1.1rem !important; /* 24px → 17px程度に縮小 */
+    white-space: nowrap;          /* 改行禁止 */
+    overflow: hidden;             /* はみ出し防止 */
+    text-overflow: ellipsis;
+    margin-bottom: 0.2rem;
+    width: 100%;
+    justify-content: center;
+  }
+  
+  /* 2. モデル読み込み中: 文字サイズ縮小、2行化防止 */
+  #status-indicator {
+    font-size: 0.9rem !important; /* 文字を小さく */
+    flex-wrap: nowrap !important; /* 絶対に折り返さない */
+  }
+
+  /* 3. カウントカード: 「トラック：0台」を1行に収める */
+  .count-item {
+    font-size: 0.7rem !important;  /* 極小サイズ */
+    white-space: nowrap !important; /* 改行禁止 */
+    text-align: center;
+    display: flex;
+    align-items: center;
+  }
+  
+  /* 4. 見出し統一（〇時台、ログ、設定）: サイズ統一＆改行防止 */
+  #current-hour-title,
+  .panel h3,
+  .log-header h3,
+  #settings-panel h3 {
+    font-size: 0.9rem !important; /* 統一サイズ */
+    white-space: nowrap !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+  }
+
+  /* 5. インフォボタン(i)のサイズ統一 */
+  #app-title .title-info-btn,
+  #settings-panel .info-btn,
+  .setting-info-btn {
+    width: 20px !important;
+    height: 20px !important;
+    font-size: 0.7rem !important;
+    line-height: 1 !important;
+  }
+  
+  /* 6. 入力欄のグレー解除 (iOS対策) */
+  input, select {
+    appearance: none;           /* デフォルトスタイル解除 */
+    -webkit-appearance: none;   /* iOS Safari用 */
+    background-color: #ffffff !important;
+    color: #333333 !important;
+    opacity: 1 !important;      /* 透明度を強制解除 */
+    border: 1px solid #ccc;
+  }
+
+  /* 7. 予約入力（日時）: 横並び重なり防止 & プレースホルダー表示 */
+  .schedule-inputs {
+    display: flex;
+    flex-direction: row !important; /* 横並び強制 */
+    gap: 2px !important;            /* 隙間を極限まで詰める */
+  }
+  
+  .schedule-inputs label {
+    flex: 1;             /* 幅を等分 */
+    min-width: 0;        /* 親枠からはみ出さないようにする（重要） */
+    font-size: 0.8rem !important;
+    overflow: hidden;
+  }
+
+  input[type="datetime-local"] {
+    width: 100% !important;
+    padding: 0 !important;         /* 余白なし */
+    height: 34px;                  /* タップしやすい高さは確保 */
+    letter-spacing: -0.5px;        /* 文字間を詰める */
+  }
+}
