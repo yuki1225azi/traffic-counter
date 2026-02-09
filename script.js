@@ -1493,11 +1493,11 @@ function updateLogDisplay(clear=false){
 }
 
 function updateHourTitle(){
-  const h = (hourWindowStart || new Date()).getHours().toString().padStart(2, "0");
+  // .padStartを削除し、数値のまま取得（例: 1, 9, 10）
+  const h = (hourWindowStart || new Date()).getHours();
 
   if(countMode === "pedestrian"){
-    // ▼▼▼ 変更：歩行者モードの表示変更 ▼▼▼
-    // 確定値(person) + 判定不能(unknownOneTouch) を合計とする
+    // 歩行者モード
     const confirmed = countsCurrentHour.person || 0;
     const oneTouch = unknownOneTouch || 0;
     const total = confirmed + oneTouch;
@@ -1506,7 +1506,7 @@ function updateHourTitle(){
     return;
   }
 
-  // 車両モード：見出しに「計◯台(うち車種不明◯台)」を表示
+  // 車両モード
   const counted = getCountedTotalByMode(countsCurrentHour);
   const unk = Number(unknownTotal || 0);
   const total = counted + unk;
