@@ -305,6 +305,9 @@ input[type="number"], input[type="datetime-local"], select {
     font-size: 0.8rem !important; /* 文字を小さく */
     flex-wrap: nowrap !important; /* 絶対に折り返さない */
   }
+  #loading-progress {
+    width: 100px !important;      /* スマホでは100px固定 */
+  }
 
   /* 3. カウントカード: 「トラック：0台」を1行に収める */
   .count-item {
