@@ -212,8 +212,8 @@ input[type="number"], input[type="datetime-local"], select {
 
   /* --- 1. タイトル＆ヘッダーの1行化 --- */
   #app-title {
-    font-size: 1.1rem !important;
-    white-space: nowrap;
+    font-size: 1.1rem !important; /* 縮小 */
+    white-space: nowrap;          /* 改行禁止 */
     margin-bottom: 0.2rem;
     width: 100%;
     justify-content: center;
@@ -231,5 +231,103 @@ input[type="number"], input[type="datetime-local"], select {
   #loading-model { white-space: nowrap; }
   #loading-progress {
     width: auto !important;
-    flex: 0 1 100px;
+    flex: 0 1 100px; /* 自動伸縮 */
     height: 6px;
+  }
+
+  /* --- 3. インフォボタン(i)のサイズ統一 --- */
+  #app-title .title-info-btn,
+  #settings-panel .info-btn,
+  .setting-info-btn {
+    width: 20px !important;
+    height: 20px !important;
+    font-size: 0.7rem !important;
+    line-height: 1 !important;
+  }
+
+  /* --- 4. 各パネル見出しの1行化（〇時台の交通量など） --- */
+  #current-hour-title,
+  .panel h3,
+  .log-header h3,
+  #settings-panel h3 {
+    font-size: 0.9rem !important;
+    white-space: nowrap !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+  }
+
+  /* --- 5. カウントカード：3列表示（標準維持） --- */
+  /* 文字サイズだけ調整し、改行を許容 */
+  .count-item {
+    font-size: 0.7rem !important;
+    padding: 4px 2px !important;
+    text-align: center;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  /* 列数は標準(3列)のままにするため、記述を追加しない */
+
+
+  /* --- 6. 予約入力（日時）：横並び維持 & 重なり防止 --- */
+  .schedule-inputs {
+    flex-direction: row !important; /* 横並び強制 */
+    gap: 4px !important;            /* 隙間を詰める */
+  }
+
+  /* 重なりを防ぐための重要設定：親枠からはみ出させない */
+  .schedule-inputs label {
+    flex: 1;       /* 均等に分ける */
+    min-width: 0;  /* Flexboxで縮小可能にする（これがないと重なる） */
+  }
+
+  /* 入力欄の文字を限界まで小さくして横に収める */
+  input[type="datetime-local"] {
+    font-size: 0.7rem !important;   /* スマホ横並び用サイズ */
+    color: #333 !important;
+    background: #fff !important;
+    opacity: 1 !important;
+    padding: 4px 0 !important;      /* 内側の余白を削る */
+    width: 100% !important;
+    letter-spacing: -0.5px;         /* 文字間も少し詰める */
+  }
+  
+  /* --- 7. 設定パネルのグリッド調整（2列） --- */
+  .settings-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* =========================================
+   UI改善パッチ：ROI編集ボタン & キャンバス操作
+   ========================================= */
+.roi-btn {
+  position: absolute; bottom: 10px; right: 10px;
+  background: rgba(0, 0, 0, 0.6); color: #fff;
+  border: 1px solid #fff; border-radius: 20px;
+  padding: 8px 16px; font-size: 0.85rem;
+  z-index: 20; cursor: pointer; backdrop-filter: blur(4px);
+}
+.roi-btn.editing {
+  background: #e53935; border-color: #e53935;
+  font-weight: bold; box-shadow: 0 2px 8px rgba(229, 57, 53, 0.5);
+}
+
+#canvas { pointer-events: none; } /* 通常はスクロール優先 */
+#canvas.editing {
+  pointer-events: auto; touch-action: none;
+  border: 2px solid #e53935;
+}
+
+/* アコーディオンパネル */
+details.panel > summary { list-style: none; cursor: pointer; outline: none; }
+details.panel > summary::-webkit-details-marker { display:none; }
+details.panel > summary::after {
+  content: '+'; font-weight: bold; font-size: 1.2rem;
+  margin-left: auto; color: #666;
+}
+details.panel[open] > summary::after { content: '-'; }
+details.panel[open] .settings-grid {
+  margin-top: 1rem; padding-top: 0.5rem; border-top: 1px dashed #eee;
+}
