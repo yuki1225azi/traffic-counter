@@ -953,7 +953,7 @@ async function init(){
 
     // エラーメッセージを文字列化してチェック
     const errStr = String(err?.message || err || "");
-    let userMsg = "初期化に失敗しました";
+    let userMsg = `${errStr}`;
 
     // よくあるエラー（権限拒否）の場合は、具体的な日本語メッセージにする
     if(errStr.includes("Permission denied") || errStr.includes("NotAllowedError")){
