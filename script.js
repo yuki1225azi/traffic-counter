@@ -675,28 +675,28 @@ function drawRoi(ctx){
   ctx.restore();
 }
 
-/* ========= ROI操作（モバイル対応：タッチ判定自動拡大） ========= */
+/* ========= ROI操作（モバイル最適化版：判定範囲を指の太さに合わせる） ========= */
 function setupRoiDrag(){
   const c = DOM.canvas;
   if(!c) return;
 
-  c.style.touchAction = "pan-y";
+  // ブラウザのスクロールを抑制
+  c.style.touchAction = "none"; 
 
   let dragging = false;
   let anchor = null; 
 
-  // ★修正点：距離計算（単純なピクセル距離ではなく、画面上の見た目の距離で判定）
+  // ★改善点1: 画面上の見た目（CSSピクセル）に基づいた判定半径を計算
   const getHitRadius = () => {
-    // 画面上のキャンバス幅を取得
     const rect = c.getBoundingClientRect();
     if (!rect.width) return 40;
     
-    // 「映像の幅 / 画面上の幅」で倍率を出す
+    // 映像の解像度と、画面上の表示サイズの比率を計算
     const scaleX = c.width / rect.width;
     
-    // 画面上で「半径50px」くらいの広さを確保する
-    // これにより、スマホで映像が縮小されていても、指の太さ分しっかり反応する
-    return 50 * scaleX;
+    // スマホの指の太さを考慮し、画面上で「半径40〜50px」程度の当たり判定を確保
+    // 映像が高解像度でも、この計算で「指に吸い付く」ような操作感になります
+    return 40 * scaleX; 
   };
 
   const getDist = (p1, p2) => Math.sqrt((p1.x-p2.x)**2 + (p1.y-p2.y)**2);
@@ -708,9 +708,9 @@ function setupRoiDrag(){
     const p = getCanvasPoint(ev);
     const r = getRoiPx();
     
-    // 動的に判定半径を決定
     const HIT_RADIUS = getHitRadius();
 
+    // 四隅の判定位置
     const corners = [
       { id: "tl", x: r.x,       y: r.y,       opp: {x: r.x+r.w, y: r.y+r.h} },
       { id: "tr", x: r.x+r.w,   y: r.y,       opp: {x: r.x,     y: r.y+r.h} },
@@ -719,9 +719,9 @@ function setupRoiDrag(){
     ];
 
     let hitCorner = null;
-    // 一番近い角を探す方式に変更（重なっていても反応しやすくする）
-    let minD = HIT_RADIUS;
+    let minD = HIT_RADIUS; // この範囲内なら「角を触った」とみなす
     
+    // 一番近い角を探す
     for(const corner of corners){
       const d = getDist(p, corner);
       if(d < minD){
@@ -739,18 +739,18 @@ function setupRoiDrag(){
       
       ev.preventDefault();
       ev.stopPropagation();
-    } else {
-      dragging = false;
-      anchor = null;
     }
   };
 
   const moveDrag = (ev)=>{
     if(!dragging || !anchor) return;
+    const p = getCanvasPoint(ev);
+    
+    // 枠を再設定
+    setRoiFromPx(anchor.x, anchor.y, p.x, p.y);
+    
     ev.preventDefault(); 
     ev.stopPropagation();
-    const p = getCanvasPoint(ev);
-    setRoiFromPx(anchor.x, anchor.y, p.x, p.y);
   };
 
   const endDrag = (ev)=>{
