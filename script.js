@@ -670,23 +670,25 @@ function drawRoi(ctx){
   ctx.restore();
 }
 
-/* ========= ROI操作（スクロール制御 ＆ 判定範囲拡大 ＆ 四隅移動） ========= */
+/* ========= ROI操作（角を中心に円形の当たり判定 ＆ スクロール制御） ========= */
 function setupRoiDrag(){
   const c = DOM.canvas;
   if(!c) return;
 
-  // 初期状態ではスクロールを許可
-  c.style.touchAction = "auto"; 
+  // 初期状態ではブラウザのスクロールを許可
+  c.style.touchAction = "auto";
 
   let dragging = false;
   let anchor = null; 
 
+  // 当たり判定の「半径」を計算（デバイスごとに最適化）
   const getHitRadius = () => {
     const rect = c.getBoundingClientRect();
     if (!rect.width) return 40;
     const scaleX = c.width / rect.width;
-    // 指操作時は当たり判定を大きく(45px)、PCなら標準的に調整
-    return 45 * scaleX; 
+    // スマホ(Touch)なら広め(50px相当)、PCなら標準的(30px相当)に設定
+    const isTouch = window.matchMedia("(pointer: coarse)").matches;
+    return (isTouch ? 50 : 30) * scaleX;
   };
 
   const getDist = (p1, p2) => Math.sqrt((p1.x-p2.x)**2 + (p1.y-p2.y)**2);
@@ -698,27 +700,32 @@ function setupRoiDrag(){
     const r = getRoiPx();
     const HIT_RADIUS = getHitRadius();
 
-    // 全ての角について、ドラッグされた角の「対角」をアンカーにする
+    // 四隅の定義：opp(反対側)が固定される支点
     const corners = [
-      { id: "tl", x: r.x,       y: r.y,       opp: {x: r.x+r.w, y: r.y+r.h} }, // 左上を掴めば右下が固定
-      { id: "tr", x: r.x+r.w,   y: r.y,       opp: {x: r.x,     y: r.y+r.h} }, // 右上を掴めば左下が固定
-      { id: "br", x: r.x+r.w,   y: r.y+r.h,   opp: {x: r.x,     y: r.y}     }, // 右下を掴めば左上が固定
-      { id: "bl", x: r.x,       y: r.y+r.h,   opp: {x: r.x+r.w, y: r.y}     }  // 左下を掴めば右上が固定
+      { id: "tl", x: r.x,       y: r.y,       opp: {x: r.x+r.w, y: r.y+r.h} }, // 左上
+      { id: "tr", x: r.x+r.w,   y: r.y,       opp: {x: r.x,     y: r.y+r.h} }, // 右上
+      { id: "br", x: r.x+r.w,   y: r.y+r.h,   opp: {x: r.x,     y: r.y}     }, // 右下
+      { id: "bl", x: r.x,       y: r.y+r.h,   opp: {x: r.x+r.w, y: r.y}     }  // 左下
     ];
 
     let hitCorner = null;
-    let minD = HIT_RADIUS;
+    let minD = HIT_RADIUS; 
     
+    // ★改良点：角を中心に「円形」の判定を行う
+    // 角からの距離が一定以内(HIT_RADIUS)なら、内側・外側問わず反応
     for(const corner of corners){
       const d = getDist(p, corner);
-      if(d < minD){ minD = d; hitCorner = corner; }
+      if(d < minD){ 
+        minD = d;
+        hitCorner = corner;
+      }
     }
 
     if(hitCorner){
       dragging = true;
       anchor = hitCorner.opp;
       
-      // ★ROI操作中のみスクロールを禁止
+      // ROI操作中のみスクロールをロック
       c.style.touchAction = "none";
       c.classList.add("roi-active"); 
       
@@ -740,7 +747,7 @@ function setupRoiDrag(){
     dragging = false;
     anchor = null;
     
-    // ★終了後にスクロールを許可に戻す
+    // 指を離したらスクロールを許可に戻す
     c.style.touchAction = "auto";
     c.classList.remove("roi-active");
     
