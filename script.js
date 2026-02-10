@@ -694,9 +694,9 @@ function setupRoiDrag(){
     // 「映像の幅 / 画面上の幅」で倍率を出す
     const scaleX = c.width / rect.width;
     
-    // 画面上で「半径100px」くらいの広さを確保する
+    // 画面上で「半径50px」くらいの広さを確保する
     // これにより、スマホで映像が縮小されていても、指の太さ分しっかり反応する
-    return 100 * scaleX;
+    return 50 * scaleX;
   };
 
   const getDist = (p1, p2) => Math.sqrt((p1.x-p2.x)**2 + (p1.y-p2.y)**2);
