@@ -909,10 +909,12 @@ function ensureRoiState(track){
       ix < r.x + r.w && ix + iw > r.x &&
       iy < r.y + r.h && iy + ih > r.y
     );
+    const initialIn = isCoreOverlapping;
     roiStateByTrack.set(track.id, {
-      prevIn: isCoreOverlapping,
-      contactCount: 0,
-      firstClass: null,
+      prevIn: initialIn,
+      // ★重要：確定した瞬間にすでにROI内なら「接触1回目済み」として扱う（取り逃がし防止）
+      contactCount: initialIn ? 1 : 0,
+      firstClass: initialIn ? track.cls : null,
       lastContactFrame: -999999
     });
   }
@@ -1710,6 +1712,11 @@ function fileNameFromDate(d, noun){
 }
 
 function toast(msg, isError=false){
+  // toast要素が無い/HTMLが途中で欠けている場合でも、アプリ全体が止まらないようにガード
+  if(!DOM.toast){
+    console.warn("[toast] element not found:", msg);
+    return;
+  }
   DOM.toast.textContent = msg;
   DOM.toast.style.backgroundColor = isError ? "rgba(229,57,53,.85)" : "rgba(0,0,0,.8)";
   DOM.toast.classList.remove("hidden");
