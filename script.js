@@ -675,42 +675,33 @@ function drawRoi(ctx){
   ctx.restore();
 }
 
-/* ========= ROI操作（モバイル最適化版：判定範囲を指の太さに合わせる） ========= */
+/* ========= ROI操作（キャンバス外枠は光らせず、ROI枠のみ変化させる） ========= */
 function setupRoiDrag(){
   const c = DOM.canvas;
   if(!c) return;
 
-  // ブラウザのスクロールを抑制
   c.style.touchAction = "none"; 
 
   let dragging = false;
   let anchor = null; 
 
-  // ★改善点1: 画面上の見た目（CSSピクセル）に基づいた判定半径を計算
   const getHitRadius = () => {
     const rect = c.getBoundingClientRect();
     if (!rect.width) return 40;
-    
-    // 映像の解像度と、画面上の表示サイズの比率を計算
     const scaleX = c.width / rect.width;
-    
-    // スマホの指の太さを考慮し、画面上で「半径40〜50px」程度の当たり判定を確保
-    // 映像が高解像度でも、この計算で「指に吸い付く」ような操作感になります
-    return 40 * scaleX; 
+    // 指での操作を想定し、判定は広めに維持
+    return 45 * scaleX; 
   };
 
   const getDist = (p1, p2) => Math.sqrt((p1.x-p2.x)**2 + (p1.y-p2.y)**2);
 
   const startDrag = (ev)=>{
     if(isAnalyzing || (window.roiLocked === true)) return;
-    if(!DOM.canvas.width || !DOM.canvas.height) return;
-
+    
     const p = getCanvasPoint(ev);
     const r = getRoiPx();
-    
     const HIT_RADIUS = getHitRadius();
 
-    // 四隅の判定位置
     const corners = [
       { id: "tl", x: r.x,       y: r.y,       opp: {x: r.x+r.w, y: r.y+r.h} },
       { id: "tr", x: r.x+r.w,   y: r.y,       opp: {x: r.x,     y: r.y+r.h} },
@@ -719,9 +710,8 @@ function setupRoiDrag(){
     ];
 
     let hitCorner = null;
-    let minD = HIT_RADIUS; // この範囲内なら「角を触った」とみなす
+    let minD = HIT_RADIUS;
     
-    // 一番近い角を探す
     for(const corner of corners){
       const d = getDist(p, corner);
       if(d < minD){
@@ -734,37 +724,96 @@ function setupRoiDrag(){
       dragging = true;
       anchor = hitCorner.opp;
       
-      c.classList.add("roi-dragging");
-      try{ c.setPointerCapture(ev.pointerId); }catch(_e){}
+      // 内部的なフラグとしてクラスを付与（描画関数が参照する）
+      c.classList.add("roi-active"); 
       
+      try{ c.setPointerCapture(ev.pointerId); }catch(_e){}
       ev.preventDefault();
-      ev.stopPropagation();
     }
   };
 
   const moveDrag = (ev)=>{
     if(!dragging || !anchor) return;
     const p = getCanvasPoint(ev);
-    
-    // 枠を再設定
     setRoiFromPx(anchor.x, anchor.y, p.x, p.y);
     
+    // 操作中に枠の変化を即座に反映
+    if(!isAnalyzing) drawVideoToCanvas(); 
+    
     ev.preventDefault(); 
-    ev.stopPropagation();
   };
 
   const endDrag = (ev)=>{
     if(!dragging) return;
     dragging = false;
     anchor = null;
-    c.classList.remove("roi-dragging");
+    
+    c.classList.remove("roi-active");
     saveRoi();
+    if(!isAnalyzing) drawVideoToCanvas();
   };
 
   c.addEventListener("pointerdown", startDrag);
   c.addEventListener("pointermove", moveDrag);
   c.addEventListener("pointerup", endDrag);
   c.addEventListener("pointercancel", endDrag);
+}
+
+/* ========= ROI描画（枠の変化：オレンジ実線＋太線） ========= */
+function drawRoi(ctx){
+  const r = getRoiPx();
+  if(r.w <= 0 || r.h <= 0) return;
+
+  const isActive = DOM.canvas.classList.contains("roi-active");
+  // 操作中はオレンジの実線、待機中は白の破線
+  const mainColor = isActive ? "#ff9800" : "#ffffff"; 
+
+  ctx.save();
+
+  // 1. 枠内の塗りつぶし（操作中は少しだけ色を濃くして「選択中」を明示）
+  ctx.fillStyle = isActive ? "rgba(255, 152, 0, 0.2)" : "rgba(255, 255, 255, 0.15)";
+  ctx.fillRect(r.x, r.y, r.w, r.h);
+
+  // 2. メインの枠線
+  ctx.lineWidth = isActive ? 4 : 2; // 操作中は少し太く
+  ctx.strokeStyle = "rgba(0, 0, 0, 0.6)"; // 下地（視認性確保）
+  ctx.setLineDash([]);
+  ctx.strokeRect(r.x, r.y, r.w, r.h);
+  
+  ctx.strokeStyle = mainColor;
+  // 操作中は位置を正確に把握するため、破線ではなく実線にする
+  if (!isActive) ctx.setLineDash([5, 5]); 
+  ctx.strokeRect(r.x, r.y, r.w, r.h);
+
+  // 3. 四隅のハンドル（L字マーク）
+  const arm = Math.max(40, Math.min(r.w, r.h) * 0.2);
+  const corners = [
+    [ [r.x, r.y+arm], [r.x, r.y], [r.x+arm, r.y] ],
+    [ [r.x+r.w-arm, r.y], [r.x+r.w, r.y], [r.x+r.w, r.y+arm] ],
+    [ [r.x+r.w, r.y+r.h-arm], [r.x+r.w, r.y+r.h], [r.x+r.w-arm, r.y+r.h] ],
+    [ [r.x, r.y+r.h-arm], [r.x, r.y+r.h], [r.x+arm, r.y+r.h] ]
+  ];
+
+  ctx.setLineDash([]);
+  ctx.lineCap = "round";
+  
+  // 外側の縁取り
+  ctx.lineWidth = isActive ? 10 : 8;
+  ctx.strokeStyle = "rgba(0, 0, 0, 0.8)";
+  corners.forEach(p => {
+    ctx.beginPath(); ctx.moveTo(p[0][0], p[0][1]);
+    ctx.lineTo(p[1][0], p[1][1]); ctx.lineTo(p[2][0], p[2][1]); ctx.stroke();
+  });
+
+  // 内側のメインカラー
+  ctx.lineWidth = isActive ? 6 : 4;
+  ctx.strokeStyle = mainColor;
+  corners.forEach(p => {
+    ctx.beginPath(); ctx.moveTo(p[0][0], p[0][1]);
+    ctx.lineTo(p[1][0], p[1][1]); ctx.lineTo(p[2][0], p[2][1]); ctx.stroke();
+  });
+
+  ctx.restore();
 }
 
 /* ========= 追跡器（マルチクラス） ========= */
