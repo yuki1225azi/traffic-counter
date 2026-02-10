@@ -710,6 +710,61 @@ const moveDrag = (ev)=>{
   c.addEventListener("pointercancel", endDrag);
 }
 
+/* ========= 画面スクロール抑制（誤操作対策） =========
+   - キャンバス上のホイール/タッチ移動で、ページがスクロールしてしまうのを抑制
+   - 入力欄（input/textarea/select）操作は妨げない
+======================================================= */
+function setupScrollSuppression(){
+  // iOS/Androidのバウンス抑制（対応ブラウザのみ）
+  try{
+    document.documentElement.style.overscrollBehavior = "none";
+    document.body.style.overscrollBehavior = "none";
+  }catch(_e){}
+
+  const isEditable = (el)=>{
+    if(!el) return false;
+    const tag = (el.tagName || "").toLowerCase();
+    return tag === "input" || tag === "textarea" || tag === "select" || el.isContentEditable === true;
+  };
+  const isInVideoArea = (el)=>{
+    if(!el) return false;
+    if(el === DOM.canvas) return true;
+    if(el.closest) return !!el.closest("#video-container");
+    return false;
+  };
+
+  // ホイールでページが動くのを抑制（キャンバス/動画エリア上のみ）
+  window.addEventListener("wheel", (e)=>{
+    if(isEditable(document.activeElement)) return;
+    if(isInVideoArea(e.target)){
+      e.preventDefault();
+    }
+  }, { passive:false });
+
+  // タッチスクロール抑制（キャンバス/動画エリア上のみ）
+  window.addEventListener("touchmove", (e)=>{
+    if(isEditable(document.activeElement)) return;
+    // touchmove は target が取得できない環境もあるので、touchの開始位置で判定する
+    const t = e.target;
+    if(isInVideoArea(t)){
+      e.preventDefault();
+    }
+  }, { passive:false });
+
+  // スペースキー等によるページスクロール抑制（分析中＋入力中以外）
+  window.addEventListener("keydown", (e)=>{
+    if(isEditable(document.activeElement)) return;
+    if(!isAnalyzing) return;
+
+    const k = e.key;
+    if(k === " " || e.code === "Space" || k === "PageDown" || k === "PageUp" || k === "Home" || k === "End"){
+      e.preventDefault();
+    }
+    if(k === "ArrowUp" || k === "ArrowDown"){
+      e.preventDefault();
+    }
+  }, { passive:false });
+}
 /* ========= ROI描画（枠の変化：オレンジ実線＋太線） ========= */
 function drawRoi(ctx){
   const r = getRoiPx();
@@ -909,13 +964,21 @@ function ensureRoiState(track){
       ix < r.x + r.w && ix + iw > r.x &&
       iy < r.y + r.h && iy + ih > r.y
     );
-    const initialIn = isCoreOverlapping;
     roiStateByTrack.set(track.id, {
-      prevIn: initialIn,
-      // ★重要：確定した瞬間にすでにROI内なら「接触1回目済み」として扱う（取り逃がし防止）
-      contactCount: initialIn ? 1 : 0,
-      firstClass: initialIn ? track.cls : null,
-      lastContactFrame: -999999
+      prevIn: isCoreOverlapping,
+
+      // ★修正：確定した時点でROI内なら「1回目接触済み」として開始
+      //  - confirmedになる前にROIへ入っていたケースの「取り逃がし」を防ぐ
+      contactCount: isCoreOverlapping ? 1 : 0,
+      firstClass: isCoreOverlapping ? track.cls : null,
+
+      // 連続接触のチャタリング防止（通常は遠い過去でOK）
+      lastContactFrame: -999999,
+
+      // ★Unknown増え抑制用フラグ
+      //  - 初期からROI内で contactCount=1 にしただけなら、境界切替を見てない限り Unknown にしない
+      touchedByInit: isCoreOverlapping,
+      sawBoundaryToggle: false
     });
   }
   return roiStateByTrack.get(track.id);
@@ -985,7 +1048,9 @@ function updateRoiCountingForConfirmedTracks(){
     if(inNow !== st.prevIn){
       if(frameIndex - st.lastContactFrame >= ROI_DEBOUNCE_FRAMES){
         st.lastContactFrame = frameIndex;
-        if(st.contactCount === 0){
+        
+        st.sawBoundaryToggle = true; // ★実際に境界切替を観測
+if(st.contactCount === 0){
           st.contactCount = 1;
           st.firstClass = tr.cls;
         }else if(st.contactCount === 1){
@@ -1003,7 +1068,11 @@ function onTrackRemoved(tr){
   const st = roiStateByTrack.get(tr.id);
   if(!st) return;
   if(st.contactCount === 1){
-    countUnknownOneTouchUp();
+    // ★境界切替を一度でも観測した場合のみ Unknown(1touch) にする
+    // 初期からROI内で contactCount=1 になっただけのケース（検知断で消えた等）は Unknown を増やさない
+    if(st.sawBoundaryToggle){
+      countUnknownOneTouchUp();
+    }
   }
   roiStateByTrack.delete(tr.id);
 }
@@ -1120,6 +1189,7 @@ function setupEventListeners(){
 
   setupTabs();
   setupRoiDrag(); // ROI枠のドラッグ設定（見た目変化はキャンバス上の枠のみ）
+  setupScrollSuppression(); // 画面スクロール抑制（キャンバス操作の誤スクロール対策）
 }
 
 
@@ -1398,21 +1468,27 @@ function drawAll(){
   };
 
   for(const tr of tracker.tracks){
-    if(tr.lostAge > 0) continue;
+    // 見失いが短時間なら枠だけ残す（チカチカ抑制）
+    const DRAW_LOST = 2;
+    if(tr.lostAge > DRAW_LOST) continue;
+
     // 「確定必要フレーム」に達したものだけ枠を表示（＝表示と計測を同期）
     if(tr.state !== "confirmed") continue;
 
     const [x,y,w,h] = tr.bbox;
     const cls = tr.cls;
-
-    // モードに応じて描画対象を絞る
+// モードに応じて描画対象を絞る
     if(countMode === "vehicle" && cls === "person") continue; // 車両モードは人を描画しない
     if(countMode === "pedestrian" && cls !== "person") continue; // 歩行者モードは人以外を描画しない
 
+    ctx.save();
+    if(tr.lostAge > 0) ctx.setLineDash([4,4]); // 見失い中は点線
+    else ctx.setLineDash([]);
+
     ctx.strokeStyle = color[cls] || "#ffffff";
     ctx.strokeRect(x,y,w,h);
-
-    // 修正: if(mode === "all"){ ... } の条件分岐を外し、中身を常に実行する
+    ctx.restore();
+// 修正: if(mode === "all"){ ... } の条件分岐を外し、中身を常に実行する
     const label = `${cls} ${Math.floor(tr.score*100)} [#${tr.id}]`;
     const tw = ctx.measureText(label).width + 6;
     ctx.fillStyle = "rgba(0,0,0,0.6)";
@@ -1712,11 +1788,6 @@ function fileNameFromDate(d, noun){
 }
 
 function toast(msg, isError=false){
-  // toast要素が無い/HTMLが途中で欠けている場合でも、アプリ全体が止まらないようにガード
-  if(!DOM.toast){
-    console.warn("[toast] element not found:", msg);
-    return;
-  }
   DOM.toast.textContent = msg;
   DOM.toast.style.backgroundColor = isError ? "rgba(229,57,53,.85)" : "rgba(0,0,0,.8)";
   DOM.toast.classList.remove("hidden");
