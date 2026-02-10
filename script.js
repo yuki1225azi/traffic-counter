@@ -605,82 +605,78 @@ function saveRoi(){
   try{ localStorage.setItem(LS_KEY_ROI, JSON.stringify(ROI_NORM)); }catch(_e){}
 }
 
-/* ========= ROI描画（モバイル対応：丸なし・L字サイズ自動調整） ========= */
+/* ========= ROI描画（PC・スマホ自動最適化 ＆ 操作中の色変化） ========= */
 function drawRoi(ctx){
   const r = getRoiPx();
   if(r.w <= 0 || r.h <= 0) return;
 
+  // 1. デバイス・状態判定
+  const isTouch = window.matchMedia("(pointer: coarse)").matches;
+  const isActive = DOM.canvas.classList.contains("roi-active");
+
+  // 2. PCとスマホでサイズを切り替え（PCは細く、スマホは掴みやすく）
+  const baseLW = isTouch ? 2.5 : 1;    // 枠線の基本太さ
+  const cornerLW = isTouch ? 4 : 2;    // L字ハンドルの太さ
+  const glowLW = isTouch ? 10 : 5;     // L字の縁取り（影）の太さ
+  const armSize = isTouch ? 45 : 25;   // L字の長さ
+
+  const mainColor = isActive ? "#ff9800" : "#ffffff"; // 操作中はオレンジ
+
   ctx.save();
 
-  // 1. 枠内の塗りつぶし
-  ctx.fillStyle = "rgba(255, 255, 255, 0.15)";
+  // --- 枠内の塗りつぶし（PCはより透明に） ---
+  ctx.fillStyle = isActive ? "rgba(255, 152, 0, 0.15)" : "rgba(255, 255, 255, 0.08)";
   ctx.fillRect(r.x, r.y, r.w, r.h);
 
-  // 2. メインの枠線（白黒2重線）
-  ctx.lineWidth = 2;
-  // (A) 黒の実線（下地）
-  ctx.strokeStyle = "rgba(0, 0, 0, 0.6)";
-  ctx.setLineDash([]); 
-  ctx.strokeRect(r.x, r.y, r.w, r.h);
-  // (B) 白の破線（上）
-  ctx.strokeStyle = "#ffffff";
-  ctx.setLineDash([5, 5]); 
+  // --- メインの枠線 ---
+  ctx.lineWidth = baseLW;
+  ctx.setLineDash([]);
+  ctx.strokeStyle = "rgba(0, 0, 0, 0.5)"; // 下地(黒)
   ctx.strokeRect(r.x, r.y, r.w, r.h);
 
-  // 3. 四隅のハンドル（L字マークのみ）
-  ctx.setLineDash([]); // 実線に戻す
+  ctx.strokeStyle = mainColor;
+  if (!isActive) ctx.setLineDash([5, 5]); // 待機中のみ破線
+  ctx.strokeRect(r.x, r.y, r.w, r.h);
+
+  // --- 四隅のハンドル（L字マーク） ---
+  ctx.setLineDash([]);
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
-  // ★修正点：固定25pxではなく、画面幅に合わせて計算（最低40px確保）
-  // これにより高解像度でもL字が小さくなりすぎない
-  const minArm = 40; 
-  const relativeArm = Math.min(r.w, r.h) * 0.2; // 枠の20%の長さ
-  const arm = Math.max(minArm, relativeArm);
-  
-  // 四隅の座標定義
+  const arm = Math.min(armSize, r.w * 0.3, r.h * 0.3);
   const corners = [
-    // 左上 (┏)
-    [ [r.x, r.y+arm], [r.x, r.y], [r.x+arm, r.y] ],
-    // 右上 (┓)
-    [ [r.x+r.w-arm, r.y], [r.x+r.w, r.y], [r.x+r.w, r.y+arm] ],
-    // 右下 (┛)
-    [ [r.x+r.w, r.y+r.h-arm], [r.x+r.w, r.y+r.h], [r.x+r.w-arm, r.y+r.h] ],
-    // 左下 (┗)
-    [ [r.x, r.y+r.h-arm], [r.x, r.y+r.h], [r.x+arm, r.y+r.h] ]
+    [ [r.x, r.y+arm], [r.x, r.y], [r.x+arm, r.y] ], // 左上
+    [ [r.x+r.w-arm, r.y], [r.x+r.w, r.y], [r.x+r.w, r.y+arm] ], // 右上
+    [ [r.x+r.w, r.y+r.h-arm], [r.x+r.w, r.y+r.h], [r.x+r.w-arm, r.y+r.h] ], // 右下
+    [ [r.x, r.y+r.h-arm], [r.x, r.y+r.h], [r.x+arm, r.y+r.h] ]  // 左下
   ];
 
-  // (A) 黒い太枠（影・縁取り）
-  ctx.lineWidth = 8; // 少し太くして指で隠れても見えやすく
-  ctx.strokeStyle = "rgba(0, 0, 0, 0.8)";
-  corners.forEach(points => {
-    ctx.beginPath();
-    ctx.moveTo(points[0][0], points[0][1]);
-    ctx.lineTo(points[1][0], points[1][1]);
-    ctx.lineTo(points[2][0], points[2][1]);
-    ctx.stroke();
+  // (A) 外側の縁取り（影）
+  ctx.lineWidth = glowLW;
+  ctx.strokeStyle = "rgba(0, 0, 0, 0.7)";
+  corners.forEach(pts => {
+    ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+    ctx.lineTo(pts[1][0], pts[1][1]); ctx.lineTo(pts[2][0], pts[2][1]); ctx.stroke();
   });
 
-  // (B) 白い線（本体）
-  ctx.lineWidth = 4; // 白線も少し太く
-  ctx.strokeStyle = "#ffffff";
-  corners.forEach(points => {
-    ctx.beginPath();
-    ctx.moveTo(points[0][0], points[0][1]);
-    ctx.lineTo(points[1][0], points[1][1]);
-    ctx.lineTo(points[2][0], points[2][1]);
-    ctx.stroke();
+  // (B) メインの線
+  ctx.lineWidth = cornerLW;
+  ctx.strokeStyle = mainColor;
+  corners.forEach(pts => {
+    ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+    ctx.lineTo(pts[1][0], pts[1][1]); ctx.lineTo(pts[2][0], pts[2][1]); ctx.stroke();
   });
 
   ctx.restore();
 }
 
-/* ========= ROI操作（キャンバス外枠は光らせず、ROI枠のみ変化させる） ========= */
+/* ========= ROI操作（スクロール制御 ＆ 判定範囲拡大 ＆ 四隅移動） ========= */
 function setupRoiDrag(){
   const c = DOM.canvas;
   if(!c) return;
 
-  c.style.touchAction = "none"; 
+  // 初期状態ではスクロールを許可
+  c.style.touchAction = "auto"; 
 
   let dragging = false;
   let anchor = null; 
@@ -689,7 +685,7 @@ function setupRoiDrag(){
     const rect = c.getBoundingClientRect();
     if (!rect.width) return 40;
     const scaleX = c.width / rect.width;
-    // 指での操作を想定し、判定は広めに維持
+    // 指操作時は当たり判定を大きく(45px)、PCなら標準的に調整
     return 45 * scaleX; 
   };
 
@@ -702,11 +698,12 @@ function setupRoiDrag(){
     const r = getRoiPx();
     const HIT_RADIUS = getHitRadius();
 
+    // 全ての角について、ドラッグされた角の「対角」をアンカーにする
     const corners = [
-      { id: "tl", x: r.x,       y: r.y,       opp: {x: r.x+r.w, y: r.y+r.h} },
-      { id: "tr", x: r.x+r.w,   y: r.y,       opp: {x: r.x,     y: r.y+r.h} },
-      { id: "br", x: r.x+r.w,   y: r.y+r.h,   opp: {x: r.x,     y: r.y}     },
-      { id: "bl", x: r.x,       y: r.y+r.h,   opp: {x: r.x+r.w, y: r.y}     } 
+      { id: "tl", x: r.x,       y: r.y,       opp: {x: r.x+r.w, y: r.y+r.h} }, // 左上を掴めば右下が固定
+      { id: "tr", x: r.x+r.w,   y: r.y,       opp: {x: r.x,     y: r.y+r.h} }, // 右上を掴めば左下が固定
+      { id: "br", x: r.x+r.w,   y: r.y+r.h,   opp: {x: r.x,     y: r.y}     }, // 右下を掴めば左上が固定
+      { id: "bl", x: r.x,       y: r.y+r.h,   opp: {x: r.x+r.w, y: r.y}     }  // 左下を掴めば右上が固定
     ];
 
     let hitCorner = null;
@@ -714,17 +711,15 @@ function setupRoiDrag(){
     
     for(const corner of corners){
       const d = getDist(p, corner);
-      if(d < minD){
-        minD = d;
-        hitCorner = corner;
-      }
+      if(d < minD){ minD = d; hitCorner = corner; }
     }
 
     if(hitCorner){
       dragging = true;
       anchor = hitCorner.opp;
       
-      // 内部的なフラグとしてクラスを付与（描画関数が参照する）
+      // ★ROI操作中のみスクロールを禁止
+      c.style.touchAction = "none";
       c.classList.add("roi-active"); 
       
       try{ c.setPointerCapture(ev.pointerId); }catch(_e){}
@@ -736,10 +731,7 @@ function setupRoiDrag(){
     if(!dragging || !anchor) return;
     const p = getCanvasPoint(ev);
     setRoiFromPx(anchor.x, anchor.y, p.x, p.y);
-    
-    // 操作中に枠の変化を即座に反映
     if(!isAnalyzing) drawVideoToCanvas(); 
-    
     ev.preventDefault(); 
   };
 
@@ -748,7 +740,10 @@ function setupRoiDrag(){
     dragging = false;
     anchor = null;
     
+    // ★終了後にスクロールを許可に戻す
+    c.style.touchAction = "auto";
     c.classList.remove("roi-active");
+    
     saveRoi();
     if(!isAnalyzing) drawVideoToCanvas();
   };
