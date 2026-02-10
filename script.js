@@ -605,7 +605,7 @@ function saveRoi(){
   try{ localStorage.setItem(LS_KEY_ROI, JSON.stringify(ROI_NORM)); }catch(_e){}
 }
 
-/* ========= ROI描画（修正版：丸なし・L字のみ） ========= */
+/* ========= ROI描画（モバイル対応：丸なし・L字サイズ自動調整） ========= */
 function drawRoi(ctx){
   const r = getRoiPx();
   if(r.w <= 0 || r.h <= 0) return;
@@ -632,7 +632,11 @@ function drawRoi(ctx){
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
-  const arm = 25; // L字の長さ
+  // ★修正点：固定25pxではなく、画面幅に合わせて計算（最低40px確保）
+  // これにより高解像度でもL字が小さくなりすぎない
+  const minArm = 40; 
+  const relativeArm = Math.min(r.w, r.h) * 0.2; // 枠の20%の長さ
+  const arm = Math.max(minArm, relativeArm);
   
   // 四隅の座標定義
   const corners = [
@@ -647,7 +651,7 @@ function drawRoi(ctx){
   ];
 
   // (A) 黒い太枠（影・縁取り）
-  ctx.lineWidth = 7; 
+  ctx.lineWidth = 8; // 少し太くして指で隠れても見えやすく
   ctx.strokeStyle = "rgba(0, 0, 0, 0.8)";
   corners.forEach(points => {
     ctx.beginPath();
@@ -658,7 +662,7 @@ function drawRoi(ctx){
   });
 
   // (B) 白い線（本体）
-  ctx.lineWidth = 3;
+  ctx.lineWidth = 4; // 白線も少し太く
   ctx.strokeStyle = "#ffffff";
   corners.forEach(points => {
     ctx.beginPath();
@@ -668,63 +672,74 @@ function drawRoi(ctx){
     ctx.stroke();
   });
 
-  // 丸を描画するコード(section 4)は削除しました
-
   ctx.restore();
 }
 
-/* ========= ROI操作（四隅判定・スクロール共存ロジック） ========= */
+/* ========= ROI操作（モバイル対応：タッチ判定自動拡大） ========= */
 function setupRoiDrag(){
   const c = DOM.canvas;
   if(!c) return;
 
-  // 初期状態はスクロール可能(pan-y)にする
   c.style.touchAction = "pan-y";
 
   let dragging = false;
-  let anchor = null; // 変形の基準点
+  let anchor = null; 
 
-  // タッチ判定の広さ（40px以内なら反応させる）
-  const HIT_RADIUS = 40;
+  // ★修正点：距離計算（単純なピクセル距離ではなく、画面上の見た目の距離で判定）
+  const getHitRadius = () => {
+    // 画面上のキャンバス幅を取得
+    const rect = c.getBoundingClientRect();
+    if (!rect.width) return 40;
+    
+    // 「映像の幅 / 画面上の幅」で倍率を出す
+    const scaleX = c.width / rect.width;
+    
+    // 画面上で「半径45px（直径90px）」くらいの広さを確保する
+    // これにより、スマホで映像が縮小されていても、指の太さ分しっかり反応する
+    return 45 * scaleX;
+  };
+
   const getDist = (p1, p2) => Math.sqrt((p1.x-p2.x)**2 + (p1.y-p2.y)**2);
 
   const startDrag = (ev)=>{
-    // 測定中やロック中は操作させない
     if(isAnalyzing || (window.roiLocked === true)) return;
     if(!DOM.canvas.width || !DOM.canvas.height) return;
 
     const p = getCanvasPoint(ev);
     const r = getRoiPx();
+    
+    // 動的に判定半径を決定
+    const HIT_RADIUS = getHitRadius();
 
-    // 四隅の座標と対角点(opp)
     const corners = [
-      { id: "tl", x: r.x,       y: r.y,       opp: {x: r.x+r.w, y: r.y+r.h} }, // 左上
-      { id: "tr", x: r.x+r.w,   y: r.y,       opp: {x: r.x,     y: r.y+r.h} }, // 右上
-      { id: "br", x: r.x+r.w,   y: r.y+r.h,   opp: {x: r.x,     y: r.y}     }, // 右下
-      { id: "bl", x: r.x,       y: r.y+r.h,   opp: {x: r.x+r.w, y: r.y}     }  // 左下
+      { id: "tl", x: r.x,       y: r.y,       opp: {x: r.x+r.w, y: r.y+r.h} },
+      { id: "tr", x: r.x+r.w,   y: r.y,       opp: {x: r.x,     y: r.y+r.h} },
+      { id: "br", x: r.x+r.w,   y: r.y+r.h,   opp: {x: r.x,     y: r.y}     },
+      { id: "bl", x: r.x,       y: r.y+r.h,   opp: {x: r.x+r.w, y: r.y}     } 
     ];
 
     let hitCorner = null;
+    // 一番近い角を探す方式に変更（重なっていても反応しやすくする）
+    let minD = HIT_RADIUS;
+    
     for(const corner of corners){
-      if(getDist(p, corner) < HIT_RADIUS){
+      const d = getDist(p, corner);
+      if(d < minD){
+        minD = d;
         hitCorner = corner;
-        break;
       }
     }
 
     if(hitCorner){
-      // 角を掴んだ場合だけドラッグ開始
       dragging = true;
       anchor = hitCorner.opp;
       
-      // ドラッグ中だけスクロールを禁止するクラスをつける
       c.classList.add("roi-dragging");
       try{ c.setPointerCapture(ev.pointerId); }catch(_e){}
       
-      ev.preventDefault();  // スクロール阻止
+      ev.preventDefault();
       ev.stopPropagation();
     } else {
-      // 角以外を触った場合は何もしない（＝ブラウザがスクロールする）
       dragging = false;
       anchor = null;
     }
@@ -732,10 +747,8 @@ function setupRoiDrag(){
 
   const moveDrag = (ev)=>{
     if(!dragging || !anchor) return;
-    
-    ev.preventDefault(); // ドラッグ中の画面揺れ防止
+    ev.preventDefault(); 
     ev.stopPropagation();
-
     const p = getCanvasPoint(ev);
     setRoiFromPx(anchor.x, anchor.y, p.x, p.y);
   };
@@ -744,7 +757,7 @@ function setupRoiDrag(){
     if(!dragging) return;
     dragging = false;
     anchor = null;
-    c.classList.remove("roi-dragging"); // スクロール許可に戻す
+    c.classList.remove("roi-dragging");
     saveRoi();
   };
 
