@@ -399,19 +399,19 @@ function setupSettingItemHelpPopups(){
   }
 
 // 2) 各設定の説明（id → 日本語説明）
-  const HELP = {
+const HELP = {
     "count-mode":
       "測定対象を切り替える。\n・車両：乗用車、バス、トラック、バイク、自転車\n・歩行者：人のみ",
     "score-th":
-      "AIが物体を発見する自信の度合いである。(入力範囲：10~90%)\n・誤検知が多い場合は数値を上げる。\n・未検知が多い場合は数値を下げる。",
+      "AIが物体を発見する自信の度合いである。(入力範囲：10~90%)\n・誤検知が多い場合は上げる。\n・未検知が多い場合は下げる。",
     "max-fps":
-      "1秒間の処理回数である。(入力範囲：5~30fps)\n・高速な車の見落としを防ぐには上げる。\n・端末の発熱やバッテリー消費を抑えるには下げる。",
+      "1秒間の処理回数である。(入力範囲：5~30fps)\n・高速な車を見逃す場合は上げる。\n・発熱や電池消費を抑える場合は下げる。",
     "min-hits":
-      "計測開始に必要な連続検知フレーム数である。(入力範囲：1~9frm)\n・光の反射や揺れる草木などのノイズを除去したい場合は数値を上げる。\n・上げすぎると、通過の速い車がカウントされなくなる。",
+      "検知確定に必要な連続フレーム数である。(入力範囲：1~9frm)\n・揺れる木などのノイズが多い場合は上げる。\n・通過の速い車がカウントされない場合は下げる。",
     "max-lost":
-      "見失い許容フレーム数である。(入力範囲：5~30frm)\n・街路樹や電柱の影に隠れても、同一物体として追跡を続けたい場合は数値を上げる。\n・上げすぎると、別の車を同一と誤認しやすくなる。",
+      "見失いを許容するフレーム数である。(入力範囲：5~30frm)\n・木や影などの遮蔽物でIDが途切れる場合は上げる。\n・別の車を同一と誤認する場合は下げる。",
     "iou-th":
-      "物体追跡の厳密さである。(入力範囲：10~90%)\n・物体が密集していてIDが頻繁に入れ替わる場合は調整する。",
+      "同一物体とみなす重なりの厳しさである。(入力範囲：10~90%)\n・渋滞などで物体が混ざる場合は上げる。\n・動きが速くIDが途切れる場合は下げる。",
   };
   const grid = document.querySelector("#settings-panel .settings-grid");
   if(!grid) return;
@@ -605,71 +605,153 @@ function saveRoi(){
   try{ localStorage.setItem(LS_KEY_ROI, JSON.stringify(ROI_NORM)); }catch(_e){}
 }
 
+/* ========= ROI描画（修正版：丸なし・L字のみ） ========= */
 function drawRoi(ctx){
-  // ROI枠は常に表示
   const r = getRoiPx();
   if(r.w <= 0 || r.h <= 0) return;
 
   ctx.save();
 
-  // 1. 枠内の塗りつぶし（薄い白で統一）
-  // 測定中かどうかにかかわらず、常に同じ薄さで表示
-  ctx.fillStyle = "rgba(255,255,255,0.1)";
+  // 1. 枠内の塗りつぶし
+  ctx.fillStyle = "rgba(255, 255, 255, 0.15)";
   ctx.fillRect(r.x, r.y, r.w, r.h);
 
-  // 2. 枠線の描画（白黒ゼブラ柄）
-  ctx.lineWidth = 3; // 太さ3px（視認性確保）
-
-  // (A) 下地に「白の実線」を引く
+  // 2. メインの枠線（白黒2重線）
+  ctx.lineWidth = 2;
+  // (A) 黒の実線（下地）
+  ctx.strokeStyle = "rgba(0, 0, 0, 0.6)";
+  ctx.setLineDash([]); 
+  ctx.strokeRect(r.x, r.y, r.w, r.h);
+  // (B) 白の破線（上）
   ctx.strokeStyle = "#ffffff";
-  ctx.setLineDash([]); // 実線
+  ctx.setLineDash([5, 5]); 
   ctx.strokeRect(r.x, r.y, r.w, r.h);
 
-  // (B) 上に「黒の破線」を重ねる
-  // 5px黒 -> 5px透明（下の白が見える）の繰り返し
-  ctx.strokeStyle = "#000000";
-  ctx.setLineDash([5, 5]); // ← ここを [10, 10] から [5, 5] に書き換える
-  ctx.strokeRect(r.x, r.y, r.w, r.h);
+  // 3. 四隅のハンドル（L字マークのみ）
+  ctx.setLineDash([]); // 実線に戻す
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  const arm = 25; // L字の長さ
+  
+  // 四隅の座標定義
+  const corners = [
+    // 左上 (┏)
+    [ [r.x, r.y+arm], [r.x, r.y], [r.x+arm, r.y] ],
+    // 右上 (┓)
+    [ [r.x+r.w-arm, r.y], [r.x+r.w, r.y], [r.x+r.w, r.y+arm] ],
+    // 右下 (┛)
+    [ [r.x+r.w, r.y+r.h-arm], [r.x+r.w, r.y+r.h], [r.x+r.w-arm, r.y+r.h] ],
+    // 左下 (┗)
+    [ [r.x, r.y+r.h-arm], [r.x, r.y+r.h], [r.x+arm, r.y+r.h] ]
+  ];
+
+  // (A) 黒い太枠（影・縁取り）
+  ctx.lineWidth = 7; 
+  ctx.strokeStyle = "rgba(0, 0, 0, 0.8)";
+  corners.forEach(points => {
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], points[0][1]);
+    ctx.lineTo(points[1][0], points[1][1]);
+    ctx.lineTo(points[2][0], points[2][1]);
+    ctx.stroke();
+  });
+
+  // (B) 白い線（本体）
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "#ffffff";
+  corners.forEach(points => {
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], points[0][1]);
+    ctx.lineTo(points[1][0], points[1][1]);
+    ctx.lineTo(points[2][0], points[2][1]);
+    ctx.stroke();
+  });
+
+  // 丸を描画するコード(section 4)は削除しました
 
   ctx.restore();
 }
 
+/* ========= ROI操作（四隅判定・スクロール共存ロジック） ========= */
 function setupRoiDrag(){
   const c = DOM.canvas;
   if(!c) return;
 
-  // スマホでのスクロール干渉を避ける（見た目は変えない）
-  c.style.touchAction = "none";
+  // 初期状態はスクロール可能(pan-y)にする
+  c.style.touchAction = "pan-y";
 
   let dragging = false;
-  let p0 = null;
+  let anchor = null; // 変形の基準点
 
-  c.addEventListener("pointerdown", (ev)=>{
-    // 測定中/停止中どちらでもROIは設定できる
+  // タッチ判定の広さ（40px以内なら反応させる）
+  const HIT_RADIUS = 40;
+  const getDist = (p1, p2) => Math.sqrt((p1.x-p2.x)**2 + (p1.y-p2.y)**2);
+
+  const startDrag = (ev)=>{
+    // 測定中やロック中は操作させない
+    if(isAnalyzing || (window.roiLocked === true)) return;
     if(!DOM.canvas.width || !DOM.canvas.height) return;
-    dragging = true;
-    p0 = getCanvasPoint(ev);
-    try{ c.setPointerCapture(ev.pointerId); }catch(_e){}
-    ev.preventDefault();
-  });
 
-  c.addEventListener("pointermove", (ev)=>{
-    if(!dragging || !p0) return;
     const p = getCanvasPoint(ev);
-    setRoiFromPx(p0.x, p0.y, p.x, p.y);
-    ev.preventDefault();
-  });
+    const r = getRoiPx();
 
-  const finish = (ev)=>{
-    if(!dragging) return;
-    dragging = false;
-    p0 = null;
-    saveRoi();
-    ev?.preventDefault?.();
+    // 四隅の座標と対角点(opp)
+    const corners = [
+      { id: "tl", x: r.x,       y: r.y,       opp: {x: r.x+r.w, y: r.y+r.h} }, // 左上
+      { id: "tr", x: r.x+r.w,   y: r.y,       opp: {x: r.x,     y: r.y+r.h} }, // 右上
+      { id: "br", x: r.x+r.w,   y: r.y+r.h,   opp: {x: r.x,     y: r.y}     }, // 右下
+      { id: "bl", x: r.x,       y: r.y+r.h,   opp: {x: r.x+r.w, y: r.y}     }  // 左下
+    ];
+
+    let hitCorner = null;
+    for(const corner of corners){
+      if(getDist(p, corner) < HIT_RADIUS){
+        hitCorner = corner;
+        break;
+      }
+    }
+
+    if(hitCorner){
+      // 角を掴んだ場合だけドラッグ開始
+      dragging = true;
+      anchor = hitCorner.opp;
+      
+      // ドラッグ中だけスクロールを禁止するクラスをつける
+      c.classList.add("roi-dragging");
+      try{ c.setPointerCapture(ev.pointerId); }catch(_e){}
+      
+      ev.preventDefault();  // スクロール阻止
+      ev.stopPropagation();
+    } else {
+      // 角以外を触った場合は何もしない（＝ブラウザがスクロールする）
+      dragging = false;
+      anchor = null;
+    }
   };
 
-  c.addEventListener("pointerup", finish);
-  c.addEventListener("pointercancel", finish);
+  const moveDrag = (ev)=>{
+    if(!dragging || !anchor) return;
+    
+    ev.preventDefault(); // ドラッグ中の画面揺れ防止
+    ev.stopPropagation();
+
+    const p = getCanvasPoint(ev);
+    setRoiFromPx(anchor.x, anchor.y, p.x, p.y);
+  };
+
+  const endDrag = (ev)=>{
+    if(!dragging) return;
+    dragging = false;
+    anchor = null;
+    c.classList.remove("roi-dragging"); // スクロール許可に戻す
+    saveRoi();
+  };
+
+  c.addEventListener("pointerdown", startDrag);
+  c.addEventListener("pointermove", moveDrag);
+  c.addEventListener("pointerup", endDrag);
+  c.addEventListener("pointercancel", endDrag);
 }
 
 /* ========= 追跡器（マルチクラス） ========= */
