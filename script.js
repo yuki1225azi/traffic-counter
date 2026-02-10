@@ -6,14 +6,6 @@
      ② ROIボックス・境界2回接触によるカウント（URLでON/OFF）
    ========================= */
 
-/* ========= 設定（UIには出しません） =========
-   ▼隠しショートカット
-   - M : カウントモード切替（vehicle / pedestrian）
-      ※どちらもトーストで通知（見た目は変わりません）
-
-   ▼URLパラメータ（例: index.html?mode=vehicle）
-   - mode  : vehicle | pedestrian
-   */
 const UI_CATS = ['car','bus','truck','motorcycle','bicycle','person'];
 const VEHICLE_CATS = ['car','bus','truck','motorcycle','bicycle'];
 
@@ -42,7 +34,7 @@ const DOM = {
   endDt: document.getElementById("auto-end-dt"),
   reserveBtn: document.getElementById("reserve-btn"),
   scoreTh: document.getElementById("score-th"),
-  iouTh: document.getElementById("iou-th"),
+  hitArea: document.getElementById("hit-area"),
   minHits: document.getElementById("min-hits"),
   maxLost: document.getElementById("max-lost"),
   maxFps: document.getElementById("max-fps"),
@@ -402,6 +394,8 @@ function setupSettingItemHelpPopups(){
 const HELP = {
     "count-mode":
       "測定対象を切り替える。\n・車両：乗用車、バス、トラック、バイク、自転車\n・歩行者：人のみ",
+    "hit-area": 
+      "ROI枠との接触を判定する車体の範囲である。(設定範囲：10~100%)\n・処理落ちですり抜ける場合は広げる。\n・隣の車線を誤検知する場合は狭める。",
     "score-th":
       "AIが物体を発見する自信の度合いである。(入力範囲：10~90%)\n・誤検知が多い場合は上げる。\n・未検知が多い場合は下げる。",
     "max-fps":
@@ -410,8 +404,6 @@ const HELP = {
       "検知確定に必要な連続フレーム数である。(入力範囲：1~9frm)\n・揺れる木などのノイズが多い場合は上げる。\n・通過の速い車がカウントされない場合は下げる。",
     "max-lost":
       "見失いを許容するフレーム数である。(入力範囲：5~30frm)\n・木や影などの遮蔽物でIDが途切れる場合は上げる。\n・別の車を同一と誤認する場合は下げる。",
-    "iou-th":
-      "同一物体とみなす重なりの厳しさである。(入力範囲：10~90%)\n・渋滞などで物体が混ざる場合は上げる。\n・動きが速くIDが途切れる場合は下げる。",
   };
   const grid = document.querySelector("#settings-panel .settings-grid");
   if(!grid) return;
@@ -574,13 +566,34 @@ function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
 
 function getCanvasPoint(ev){
   const rect = DOM.canvas.getBoundingClientRect();
-  const sx = (DOM.canvas.width  || 1) / (rect.width  || 1);
-  const sy = (DOM.canvas.height || 1) / (rect.height || 1);
+
+  // canvas内部解像度（動画ピクセル）と表示領域の比率から "contain" の実スケールを求める
+  const cw = DOM.canvas.width  || 1;
+  const ch = DOM.canvas.height || 1;
+
+  const scale = Math.min(rect.width / cw, rect.height / ch);
+
+  // contain で発生する余白（レターボックス）
+  const contentW = cw * scale;
+  const contentH = ch * scale;
+  const offsetX = (rect.width  - contentW) / 2;
+  const offsetY = (rect.height - contentH) / 2;
+
+  // 要素左上基準 → コンテンツ左上基準へ
+  const xIn = (ev.clientX - rect.left - offsetX);
+  const yIn = (ev.clientY - rect.top  - offsetY);
+
+  // コンテンツ外をクリックしたときは端に寄せる（掴みやすくする）
+  const xClamped = Math.max(0, Math.min(contentW, xIn));
+  const yClamped = Math.max(0, Math.min(contentH, yIn));
+
+  // 表示座標 → canvas内部座標
   return {
-    x: (ev.clientX - rect.left) * sx,
-    y: (ev.clientY - rect.top)  * sy
+    x: xClamped / scale,
+    y: yClamped / scale
   };
 }
+
 
 function setRoiFromPx(x1,y1,x2,y2){
   const W = DOM.canvas.width  || 1;
@@ -603,71 +616,6 @@ function setRoiFromPx(x1,y1,x2,y2){
 
 function saveRoi(){
   try{ localStorage.setItem(LS_KEY_ROI, JSON.stringify(ROI_NORM)); }catch(_e){}
-}
-
-/* ========= ROI描画（PC・スマホ自動最適化 ＆ 操作中の色変化） ========= */
-function drawRoi(ctx){
-  const r = getRoiPx();
-  if(r.w <= 0 || r.h <= 0) return;
-
-  // 1. デバイス・状態判定
-  const isTouch = window.matchMedia("(pointer: coarse)").matches;
-  const isActive = DOM.canvas.classList.contains("roi-active");
-
-  // 2. PCとスマホでサイズを切り替え（PCは細く、スマホは掴みやすく）
-  const baseLW = isTouch ? 2.5 : 1;    // 枠線の基本太さ
-  const cornerLW = isTouch ? 4 : 2;    // L字ハンドルの太さ
-  const glowLW = isTouch ? 10 : 5;     // L字の縁取り（影）の太さ
-  const armSize = isTouch ? 45 : 25;   // L字の長さ
-
-  const mainColor = isActive ? "#ff9800" : "#ffffff"; // 操作中はオレンジ
-
-  ctx.save();
-
-  // --- 枠内の塗りつぶし（PCはより透明に） ---
-  ctx.fillStyle = isActive ? "rgba(255, 152, 0, 0.15)" : "rgba(255, 255, 255, 0.08)";
-  ctx.fillRect(r.x, r.y, r.w, r.h);
-
-  // --- メインの枠線 ---
-  ctx.lineWidth = baseLW;
-  ctx.setLineDash([]);
-  ctx.strokeStyle = "rgba(0, 0, 0, 0.5)"; // 下地(黒)
-  ctx.strokeRect(r.x, r.y, r.w, r.h);
-
-  ctx.strokeStyle = mainColor;
-  if (!isActive) ctx.setLineDash([5, 5]); // 待機中のみ破線
-  ctx.strokeRect(r.x, r.y, r.w, r.h);
-
-  // --- 四隅のハンドル（L字マーク） ---
-  ctx.setLineDash([]);
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-
-  const arm = Math.min(armSize, r.w * 0.3, r.h * 0.3);
-  const corners = [
-    [ [r.x, r.y+arm], [r.x, r.y], [r.x+arm, r.y] ], // 左上
-    [ [r.x+r.w-arm, r.y], [r.x+r.w, r.y], [r.x+r.w, r.y+arm] ], // 右上
-    [ [r.x+r.w, r.y+r.h-arm], [r.x+r.w, r.y+r.h], [r.x+r.w-arm, r.y+r.h] ], // 右下
-    [ [r.x, r.y+r.h-arm], [r.x, r.y+r.h], [r.x+arm, r.y+r.h] ]  // 左下
-  ];
-
-  // (A) 外側の縁取り（影）
-  ctx.lineWidth = glowLW;
-  ctx.strokeStyle = "rgba(0, 0, 0, 0.7)";
-  corners.forEach(pts => {
-    ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
-    ctx.lineTo(pts[1][0], pts[1][1]); ctx.lineTo(pts[2][0], pts[2][1]); ctx.stroke();
-  });
-
-  // (B) メインの線
-  ctx.lineWidth = cornerLW;
-  ctx.strokeStyle = mainColor;
-  corners.forEach(pts => {
-    ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
-    ctx.lineTo(pts[1][0], pts[1][1]); ctx.lineTo(pts[2][0], pts[2][1]); ctx.stroke();
-  });
-
-  ctx.restore();
 }
 
 /* ========= ROI操作（角を中心に円形の当たり判定 ＆ スクロール制御） ========= */
@@ -694,27 +642,27 @@ function setupRoiDrag(){
   const getDist = (p1, p2) => Math.sqrt((p1.x-p2.x)**2 + (p1.y-p2.y)**2);
 
   const startDrag = (ev)=>{
-    if(isAnalyzing || (window.roiLocked === true)) return;
+    // 測定中、またはロック中は操作させない
+    if(isAnalyzing || window.roiLocked === true) return;
     
     const p = getCanvasPoint(ev);
     const r = getRoiPx();
     const HIT_RADIUS = getHitRadius();
 
-    // 四隅の定義：opp(反対側)が固定される支点
+    // 四隅の定義
     const corners = [
-      { id: "tl", x: r.x,       y: r.y,       opp: {x: r.x+r.w, y: r.y+r.h} }, // 左上
-      { id: "tr", x: r.x+r.w,   y: r.y,       opp: {x: r.x,     y: r.y+r.h} }, // 右上
-      { id: "br", x: r.x+r.w,   y: r.y+r.h,   opp: {x: r.x,     y: r.y}     }, // 右下
-      { id: "bl", x: r.x,       y: r.y+r.h,   opp: {x: r.x+r.w, y: r.y}     }  // 左下
+      { id: "tl", x: r.x,       y: r.y,       opp: {x: r.x+r.w, y: r.y+r.h} },
+      { id: "tr", x: r.x+r.w,   y: r.y,       opp: {x: r.x,     y: r.y+r.h} },
+      { id: "br", x: r.x+r.w,   y: r.y+r.h,   opp: {x: r.x,     y: r.y}     },
+      { id: "bl", x: r.x,       y: r.y+r.h,   opp: {x: r.x+r.w, y: r.y}     }
     ];
 
     let hitCorner = null;
     let minD = HIT_RADIUS; 
     
-    // ★改良点：角を中心に「円形」の判定を行う
-    // 角からの距離が一定以内(HIT_RADIUS)なら、内側・外側問わず反応
+    // 円形の当たり判定
     for(const corner of corners){
-      const d = getDist(p, corner);
+      const d = Math.sqrt((p.x-corner.x)**2 + (p.y-corner.y)**2);
       if(d < minD){ 
         minD = d;
         hitCorner = corner;
@@ -725,20 +673,23 @@ function setupRoiDrag(){
       dragging = true;
       anchor = hitCorner.opp;
       
-      // ROI操作中のみスクロールをロック
-      c.style.touchAction = "none";
+      // 【重要】ここで「スクロール禁止」をブラウザに伝えます
+      c.style.touchAction = "none"; 
       c.classList.add("roi-active"); 
       
       try{ c.setPointerCapture(ev.pointerId); }catch(_e){}
+      
+      // これが「画面スクロールではなく、この処理を優先しろ」という命令です
       ev.preventDefault();
+      ev.stopPropagation();
     }
   };
 
-  const moveDrag = (ev)=>{
+const moveDrag = (ev)=>{
     if(!dragging || !anchor) return;
     const p = getCanvasPoint(ev);
     setRoiFromPx(anchor.x, anchor.y, p.x, p.y);
-    if(!isAnalyzing) drawVideoToCanvas(); 
+    // 描画更新はメインループが自動で行うので、ここでは何もしなくてOK
     ev.preventDefault(); 
   };
 
@@ -752,9 +703,7 @@ function setupRoiDrag(){
     c.classList.remove("roi-active");
     
     saveRoi();
-    if(!isAnalyzing) drawVideoToCanvas();
   };
-
   c.addEventListener("pointerdown", startDrag);
   c.addEventListener("pointermove", moveDrag);
   c.addEventListener("pointerup", endDrag);
@@ -946,10 +895,22 @@ const ROI_DEBOUNCE_FRAMES = 3;
 
 function ensureRoiState(track){
   if(!roiStateByTrack.has(track.id)){
-    const c = track.center();
     const r = getRoiPx();
+    const [bx, by, bw, bh] = track.bbox;
+    // ★修正：設定値(margin)をDOMから取得（安全のためデフォルト0.2）
+    const margin = DOM.hitArea ? Number(DOM.hitArea.value) : 0.2;
+    
+    // 判定用ボックス（芯）の計算
+    const ix = bx + (bw * margin);
+    const iy = by + (bh * margin);
+    const iw = bw * (1 - (margin * 2));
+    const ih = bh * (1 - (margin * 2));
+    const isCoreOverlapping = (
+      ix < r.x + r.w && ix + iw > r.x &&
+      iy < r.y + r.h && iy + ih > r.y
+    );
     roiStateByTrack.set(track.id, {
-      prevIn: pointInRect(c.x, c.y, r),
+      prevIn: isCoreOverlapping,
       contactCount: 0,
       firstClass: null,
       lastContactFrame: -999999
@@ -1000,29 +961,34 @@ function finalizeRoiTrip(firstCls, secondCls){
 
 
 function updateRoiCountingForConfirmedTracks(){
-
-  const r = getRoiPx();
-
+  const r = getRoiPx(); 
+  // ★ループの外で設定値を取得
+  const margin = DOM.hitArea ? Number(DOM.hitArea.value) : 0.2;
   for(const tr of tracker.tracks){
     if(tr.state !== "confirmed") continue;
-    if(tr.lostAge > 0) continue; // 今フレームで見えてないものは扱わない
-
+    if(tr.lostAge > 0) continue; 
     const st = ensureRoiState(tr);
-    const c = tr.center();
-    const inNow = pointInRect(c.x, c.y, r);
-
+    const [bx, by, bw, bh] = tr.bbox;
+    // 設定値マージンを使って芯を計算
+    const ix = bx + (bw * margin);
+    const iy = by + (bh * margin);
+    const iw = bw * (1 - (margin * 2));
+    const ih = bh * (1 - (margin * 2));
+    const inNow = (
+      ix < r.x + r.w &&
+      ix + iw > r.x &&
+      iy < r.y + r.h &&
+      iy + ih > r.y
+    );
     if(inNow !== st.prevIn){
-      // 境界接触（内外が切り替わった）
       if(frameIndex - st.lastContactFrame >= ROI_DEBOUNCE_FRAMES){
         st.lastContactFrame = frameIndex;
-
         if(st.contactCount === 0){
           st.contactCount = 1;
           st.firstClass = tr.cls;
         }else if(st.contactCount === 1){
-          // 2回目で確定
           finalizeRoiTrip(st.firstClass, tr.cls);
-          roiStateByTrack.delete(tr.id); // 1物体1回カウントにする
+          roiStateByTrack.delete(tr.id); 
         }
       }
       st.prevIn = inNow;
@@ -1144,7 +1110,7 @@ function setupEventListeners(){
   window.addEventListener("resize", adjustCanvasSize);
 
   // 既存設定は測定中に変更されたら追跡器を再生成（挙動は従来通り）
-  ["iou-th","min-hits","max-lost","score-th","max-fps"].forEach(id=>{
+  ["min-hits","max-lost","score-th","max-fps"].forEach(id=>{
     document.getElementById(id).addEventListener("change", ()=>{
       if(isAnalyzing) setupTracker();
     });
@@ -1313,16 +1279,27 @@ function adjustCanvasSize(){
   const h = DOM.video.videoHeight;
   if(!w || !h) return;
 
+  // 内部解像度は「実動画ピクセル」に合わせる
   DOM.canvas.width = w;
   DOM.canvas.height = h;
-  DOM.canvas.style.width = `${DOM.video.offsetWidth}px`;
-  DOM.canvas.style.height = `${DOM.video.offsetHeight}px`;
+
+  // 表示サイズは「実際に表示されているサイズ」を優先して拾う
+  // offsetWidth/Height が 0 になる環境対策
+  const rect = DOM.video.getBoundingClientRect();
+  const parentRect = DOM.canvas.parentElement?.getBoundingClientRect?.();
+
+  const cssW = rect.width  || DOM.video.offsetWidth  || parentRect?.width  || w;
+  const cssH = rect.height || DOM.video.offsetHeight || parentRect?.height || h;
+
+  DOM.canvas.style.width  = `${cssW}px`;
+  DOM.canvas.style.height = `${cssH}px`;
 }
+
 
 /* ========= 追跡器セットアップ ========= */
 function setupTracker(){
   tracker = new Tracker({
-    iouThreshold: Number(DOM.iouTh.value),
+    iouThreshold: 0.4,
     minHits: Number(DOM.minHits.value),
     maxLostAge: Number(DOM.maxLost.value),
 
@@ -1750,50 +1727,57 @@ function formatTimestamp(d){
 }
 
 /* =========================================
-   ROI固定（測定開始後は編集不可） 追加のみパッチ
-   - 既存の setupRoiDrag() を書き換えずに
-     先にイベントを捕まえて無効化する
+   ROI固定（測定開始後は編集不可） 修正版
    ========================================= */
 (function lockRoiAfterStartPatch(){
   try{
-    // 1) start/stop を差し替え（中身はそのまま呼ぶ）※既存関数は編集しない
+    // 1) start/stop を差し替え
     const _startAnalysis = startAnalysis;
     startAnalysis = function(){
-      roiLocked = true; // 測定開始で固定
+      window.roiLocked = true; // windowオブジェクトを使って確実に管理
       return _startAnalysis.apply(this, arguments);
     };
 
     const _stopAnalysis = stopAnalysis;
     stopAnalysis = function(){
       const r = _stopAnalysis.apply(this, arguments);
-      roiLocked = false; // 測定終了で編集再開
+      window.roiLocked = false; // 測定終了で解除
       return r;
     };
 
-    // 2) 測定中はキャンバスのROI操作をキャプチャで遮断（既存リスナーより先に動く）
+    // 2) 測定中は操作をブロック
     const c = DOM.canvas;
     if(!c) return;
 
     const blockIfLocked = (ev)=>{
-      if(isAnalyzing || roiLocked){
-        ev.preventDefault();
-        ev.stopImmediatePropagation(); // setupRoiDragの処理に行かせない
-        // 連打でうるさくならないよう軽めに（必要なら消してOK）
-        toast("測定中はROIを変更できません");
+      // 「測定中」かつ「明示的にロックされている」時だけ止める
+      if(isAnalyzing && window.roiLocked === true){
+        // ドラッグ操作中(roi-active)でない場合のみブロック
+        if(!c.classList.contains("roi-active")){
+           ev.preventDefault();
+           ev.stopImmediatePropagation();
+           
+           // タップした瞬間だけメッセージを出す
+           if(ev.type === "pointerdown"){
+             toast("測定中はROIを変更できません");
+           }
+        }
       }
     };
 
-    c.addEventListener("pointerdown", blockIfLocked, true); // capture=true
+    // capture: true で、他のイベントより先に判定する
+    c.addEventListener("pointerdown", blockIfLocked, true);
     c.addEventListener("pointermove", blockIfLocked, true);
     c.addEventListener("pointerup",   blockIfLocked, true);
-    c.addEventListener("pointercancel", blockIfLocked, true);
+    
+    // 初期状態はロック解除
+    window.roiLocked = false;
 
-    // 念のため：ページ読み込み直後は編集OK
-    roiLocked = false;
   }catch(e){
     console.warn("ROI lock patch failed:", e);
   }
 })();
+
 /* =========================================
    測定中：設定をグレーアウト（無効化） 追加のみパッチ
    - startAnalysis/stopAnalysisを上書きしてフック
@@ -2190,3 +2174,4 @@ function formatTimestamp(d){
   window.addEventListener("beforeunload", saveBackup);
 
 })();
+
