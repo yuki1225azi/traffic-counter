@@ -35,7 +35,8 @@ const DOM = {
   reserveBtn: document.getElementById("reserve-btn"),
   scoreTh: document.getElementById("score-th"),
   hitArea: document.getElementById("hit-area"),
-maxLost: document.getElementById("max-lost"),
+  minHits: document.getElementById("min-hits"),
+  maxLost: document.getElementById("max-lost"),
   maxFps: document.getElementById("max-fps"),
   countModeSelect: document.getElementById("count-mode"),
   geoLat: document.getElementById("geo-lat"),
@@ -342,7 +343,7 @@ const HELP = `【概要】
 
 【測定エリアの設定】
 ・画面上の枠の「四隅のマーク」をドラッグして、測定エリアの大きさや位置を調整する。
-・物体が枠（ROI）内に滞在している間に判定情報（クラスと信頼度）を蓄積し、退出または消失時に1台（1人）として集計される。
+・物体が枠の境界線を「入って・出る」と2回接触した瞬間に、1台（1人）として集計される。
 ・道路を横切るように枠を設置することが、判定精度を向上させるコツである。
 
 【安定稼働】
@@ -399,6 +400,8 @@ const HELP = {
       "AIが物体を発見する自信の度合いである。(入力範囲：10~90%)\n・誤検知が多い場合は上げる。\n・未検知が多い場合は下げる。",
     "max-fps":
       "1秒間の処理回数である。(入力範囲：5~30fps)\n・高速な車を見逃す場合は上げる。\n・発熱や電池消費を抑える場合は下げる。",
+    "min-hits":
+      "検知確定に必要な連続フレーム数である。(入力範囲：1~9frm)\n・揺れる木などのノイズが多い場合は上げる。\n・通過の速い車がカウントされない場合は下げる。",
     "max-lost":
       "見失いを許容するフレーム数である。(入力範囲：5~30frm)\n・木や影などの遮蔽物でIDが途切れる場合は上げる。\n・別の車を同一と誤認する場合は下げる。",
   };
@@ -771,73 +774,23 @@ class Track {
     this.bbox = det.bbox;        // [x,y,w,h]
     this.score = det.score;
     this.cls = det.cls;          // class label
-
     this.state = "tentative";
     this.hitStreak = 1;
     this.lostAge = 0;
-
     this.createdAt = performance.now();
     this.lastSeenAt = this.createdAt;
-
-    // ▼ ROI滞在型ロジック（スマホ向け）
-    // - ROI内で score を積算してクラスを安定化する
-    // - 退出確定 or 消失(onRemoved)で「1台」を確定する
-    this.weightedVotesRoi = {};  // ROI内: { car: 2.5, truck: 0.4 } のように score 合計
-    this.weightedVotesAll = {};  // 画面内: 保険（ROI内が途切れた場合の補完）
-    this.totalFramesInRoi = 0;   // ROI内にいたフレーム数（ノイズ除去に使用）
-    this.roiTouched = false;     // ROIに入った/交差した実績
-    this.roiSweepTouched = false;// 完全ワープ対策（移動線分がROIを横切った）
-    this.counted = false;        // 二重カウント防止
-    this.outRoiStreak = 0;       // ROI外が連続したフレーム数（退出確定用）
-    this.inRoiStreak = 0;        // ROI内が連続したフレーム数（デバッグ用）
-    this.prevCenterPt = null;    // {x,y} 前フレームの中心（スイープ判定用）
   }
-
   center(){
     const [x,y,w,h] = this.bbox;
     return { x: x + w/2, y: y + h/2 };
   }
-
   update(det){
-    // 更新前の中心を保存（スイープ判定用）
-    this.prevCenterPt = this.center();
-
     this.bbox = det.bbox;
     this.score = det.score;
     this.cls = det.cls;
     this.hitStreak++;
     this.lostAge = 0;
     this.lastSeenAt = performance.now();
-  }
-
-  voteAll(cls, score){
-    if(!this.weightedVotesAll[cls]) this.weightedVotesAll[cls] = 0;
-    this.weightedVotesAll[cls] += (score ?? 0);
-  }
-
-  voteRoi(cls, score){
-    if(!this.weightedVotesRoi[cls]) this.weightedVotesRoi[cls] = 0;
-    this.weightedVotesRoi[cls] += (score ?? 0);
-    this.totalFramesInRoi++;
-    this.roiTouched = true;
-  }
-
-  // ROI内票が十分なら ROI票優先、足りなければ All票で補完（ハイブリッド）
-  getWinnerClass(roiVoteMin = 4){
-    const hasRoi = this.totalFramesInRoi >= roiVoteMin && Object.keys(this.weightedVotesRoi).length > 0;
-    const map = hasRoi ? this.weightedVotesRoi : this.weightedVotesAll;
-
-    let bestCls = this.cls;
-    let maxScore = -1;
-
-    for(const c in map){
-      const v = map[c];
-      if(v > maxScore){
-        maxScore = v;
-        bestCls = c;
-      }
-    }
-    return bestCls;
   }
 }
 
@@ -905,11 +858,6 @@ class Tracker {
       const det = dets[di];
       const tr = new Track(this.nextId++, det);
       this.tracks.push(tr);
-      // minHits=1 の場合は新規生成直後に確定扱いにする（低FPSでの取りこぼし対策）
-      if(this.minHits <= 1){
-        tr.state = "confirmed";
-        this.onConfirmed(tr);
-      }
     }
 
     // 見失い加算
@@ -932,143 +880,133 @@ class Tracker {
 
 let tracker = null;
 
-/* ========= ROIカウント（滞在加重投票＋退出確定＋消失回収） =========
-  - スマホ低FPS向け：ROI境界「入った/出た」2点判定は使用しない
-  - ROI内滞在中に score を積算（加重投票）し、支配的なクラスを採用する
-  - 退出確定（連続でROI外）または onRemoved（ロスト/画面外）で回収して1台計上する
-  - 完全ワープ対策：前→今の移動線分がROIを横切ったら「ROI接触実績あり」とする
+/* ========= ROIカウント（境界2回接触） ========= */
+const roiStateByTrack = new Map();
+/*
+  roiState:
+  {
+    prevIn: boolean,
+    contactCount: 0|1,
+    firstClass: string|null,
+    lastContactFrame: number
+  }
 */
-const ROI_MIN_FRAMES   = 2; // ROI内滞在フレーム最小（ノイズ除去）
-const ROI_OUT_STREAK   = 2; // 退出確定：連続でROI外になった回数
-const ROI_VOTE_MIN     = 4; // ROI票優先に切り替える目安（票が少ない間はAllで補完）
-const ROI_PAD_PX       = 0; // ROI判定を少し広げたい場合に使用（px）
+const ROI_DEBOUNCE_FRAMES = 3;
 
-function _expandRect(r, padPx){
-  if(!padPx) return r;
-  return { x: r.x - padPx, y: r.y - padPx, w: r.w + padPx*2, h: r.h + padPx*2 };
-}
-function _pointInRect(px, py, r){
-  return (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h);
-}
-function _orient(ax, ay, bx, by, cx, cy){
-  // クロス積の符号（整数化不要）
-  return (bx-ax)*(cy-ay) - (by-ay)*(cx-ax);
-}
-function _onSegment(ax, ay, bx, by, px, py){
-  return (Math.min(ax,bx) <= px && px <= Math.max(ax,bx) &&
-          Math.min(ay,by) <= py && py <= Math.max(ay,by));
-}
-function _segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy){
-  const o1 = _orient(ax,ay,bx,by,cx,cy);
-  const o2 = _orient(ax,ay,bx,by,dx,dy);
-  const o3 = _orient(cx,cy,dx,dy,ax,ay);
-  const o4 = _orient(cx,cy,dx,dy,bx,by);
-
-  if((o1 === 0 && _onSegment(ax,ay,bx,by,cx,cy)) ||
-     (o2 === 0 && _onSegment(ax,ay,bx,by,dx,dy)) ||
-     (o3 === 0 && _onSegment(cx,cy,dx,dy,ax,ay)) ||
-     (o4 === 0 && _onSegment(cx,cy,dx,dy,bx,by))) return true;
-
-  return ((o1 > 0) !== (o2 > 0)) && ((o3 > 0) !== (o4 > 0));
-}
-function _segmentIntersectsRect(x1, y1, x2, y2, r){
-  if(_pointInRect(x1,y1,r) || _pointInRect(x2,y2,r)) return true;
-
-  const x = r.x, y = r.y, w = r.w, h = r.h;
-  // 上辺・右辺・下辺・左辺
-  if(_segmentsIntersect(x, y, x+w, y,   x1, y1, x2, y2)) return true;
-  if(_segmentsIntersect(x+w, y, x+w, y+h, x1, y1, x2, y2)) return true;
-  if(_segmentsIntersect(x+w, y+h, x, y+h, x1, y1, x2, y2)) return true;
-  if(_segmentsIntersect(x, y+h, x, y,   x1, y1, x2, y2)) return true;
-
-  return false;
-}
-
-function updateRoiCountingForConfirmedTracks(){
-  if(!tracker) return;
-
-  const r0 = getRoiPx();
-  const r = _expandRect(r0, ROI_PAD_PX);
-
-  // hit-area は「芯矩形」を作るための縮小率（0.1〜1.0）
-  const margin = DOM.hitArea ? Number(DOM.hitArea.value) : 0.2;
-
-  for(const tr of tracker.tracks){
-    if(tr.state !== "confirmed") continue;
-    if(tr.counted) continue;
-
-    // 見失い中は「投票・退出判定」を更新しない（回収は onRemoved で行う）
-    if(tr.lostAge > 0) continue;
-
-    // 画面内に見えているフレームは保険票（All）に入れておく
-    tr.voteAll(tr.cls, tr.score);
-
-    // 芯矩形（hit-area）でROI交差判定
-    const [bx, by, bw, bh] = tr.bbox;
+function ensureRoiState(track){
+  if(!roiStateByTrack.has(track.id)){
+    const r = getRoiPx();
+    const [bx, by, bw, bh] = track.bbox;
+    // ★修正：設定値(margin)をDOMから取得（安全のためデフォルト0.2）
+    const margin = DOM.hitArea ? Number(DOM.hitArea.value) : 0.2;
+    
+    // 判定用ボックス（芯）の計算
     const ix = bx + (bw * margin);
     const iy = by + (bh * margin);
     const iw = bw * (1 - (margin * 2));
     const ih = bh * (1 - (margin * 2));
+    const isCoreOverlapping = (
+      ix < r.x + r.w && ix + iw > r.x &&
+      iy < r.y + r.h && iy + ih > r.y
+    );
+    const initialIn = isCoreOverlapping;
+    roiStateByTrack.set(track.id, {
+      prevIn: initialIn,
+      // ★重要：確定した瞬間にすでにROI内なら「接触1回目済み」として扱う（取り逃がし防止）
+      contactCount: initialIn ? 1 : 0,
+      firstClass: initialIn ? track.cls : null,
+      lastContactFrame: -999999
+    });
+  }
+  return roiStateByTrack.get(track.id);
+}
 
-    const inRoi = (
+function isVehicleClass(cls){
+  return VEHICLE_CATS.includes(cls);
+}
+
+function countUp(cls){
+  if(!UI_CATS.includes(cls)) return;
+  countsCurrentHour[cls] += 1;
+  updateCountUI();
+}
+
+function countUnknownOneTouchUp(){
+  unknownTotal += 1;
+  unknownOneTouch += 1;
+  updateCountSummaryUI();
+}
+function countUnknownClassMismatchUp(){
+  unknownTotal += 1;
+  unknownClassMismatch += 1;
+  updateCountSummaryUI();
+}
+
+function applyCountByMode(cls){
+  // モードに応じてカウント対象を絞る
+  if(countMode === "pedestrian"){
+    if(cls === "person") countUp("person");
+    return;
+  }
+  // vehicleモード：車両のみ（personは無視）
+  if(isVehicleClass(cls)) countUp(cls);
+}
+
+function finalizeRoiTrip(firstCls, secondCls){
+  if(firstCls === secondCls){
+    applyCountByMode(secondCls);
+  }else{
+    // 1回目と2回目でクラスが異なる → Unknown
+    countUnknownClassMismatchUp();
+  }
+}
+
+
+function updateRoiCountingForConfirmedTracks(){
+  const r = getRoiPx(); 
+  // ★ループの外で設定値を取得
+  const margin = DOM.hitArea ? Number(DOM.hitArea.value) : 0.2;
+  for(const tr of tracker.tracks){
+    if(tr.state !== "confirmed") continue;
+    if(tr.lostAge > 0) continue; 
+    const st = ensureRoiState(tr);
+    const [bx, by, bw, bh] = tr.bbox;
+    // 設定値マージンを使って芯を計算
+    const ix = bx + (bw * margin);
+    const iy = by + (bh * margin);
+    const iw = bw * (1 - (margin * 2));
+    const ih = bh * (1 - (margin * 2));
+    const inNow = (
       ix < r.x + r.w &&
       ix + iw > r.x &&
       iy < r.y + r.h &&
       iy + ih > r.y
     );
-
-    // 完全ワープ対策：前→今の中心線分がROIを横切ったらROI接触実績とする
-    const cur = tr.center();
-    const prev = tr.prevCenterPt || cur;
-    const swept = _segmentIntersectsRect(prev.x, prev.y, cur.x, cur.y, r);
-
-    if(inRoi){
-      tr.outRoiStreak = 0;
-      tr.inRoiStreak++;
-      tr.voteRoi(tr.cls, tr.score);
-
-    }else{
-      tr.inRoiStreak = 0;
-
-      // まだROI内に1回も入れていなくても、横切ったなら「通過実績あり」にする
-      if(swept){
-        tr.roiTouched = true;
-        tr.roiSweepTouched = true;
-
-        // 票がゼロのままだとクラス決定ができないので、最小限の票を残す
-        // （ROI内0フレの“完全ワープ”を拾うため）
-        if(tr.totalFramesInRoi === 0){
-          tr.voteRoi(tr.cls, tr.score);
+    if(inNow !== st.prevIn){
+      if(frameIndex - st.lastContactFrame >= ROI_DEBOUNCE_FRAMES){
+        st.lastContactFrame = frameIndex;
+        if(st.contactCount === 0){
+          st.contactCount = 1;
+          st.firstClass = tr.cls;
+        }else if(st.contactCount === 1){
+          finalizeRoiTrip(st.firstClass, tr.cls);
+          roiStateByTrack.delete(tr.id); 
         }
       }
-
-      // ROIに入った/交差した実績があるトラックのみ、退出確定を進める
-      if(tr.roiTouched || tr.totalFramesInRoi > 0){
-        tr.outRoiStreak++;
-      }
-
-      const enoughStay = (tr.totalFramesInRoi >= ROI_MIN_FRAMES) || tr.roiSweepTouched;
-      if(!tr.counted && enoughStay && tr.outRoiStreak >= ROI_OUT_STREAK){
-        const bestClass = tr.getWinnerClass(ROI_VOTE_MIN);
-        applyCountByMode(bestClass);
-        tr.counted = true;
-      }
+      st.prevIn = inNow;
     }
   }
 }
 
 function onTrackRemoved(tr){
-  // 消失回収：ロスト/画面外でトラックが破棄される瞬間に拾う
-  if(!tr) return;
-  if(tr.counted) return;
-
-  const enoughStay = (tr.totalFramesInRoi >= ROI_MIN_FRAMES) || tr.roiSweepTouched;
-  if((tr.roiTouched || tr.totalFramesInRoi > 0) && enoughStay){
-    const bestClass = tr.getWinnerClass(ROI_VOTE_MIN);
-    applyCountByMode(bestClass);
+  // ROIロジックの「接触1回のみ」→ 車両不明
+  const st = roiStateByTrack.get(tr.id);
+  if(!st) return;
+  if(st.contactCount === 1){
+    countUnknownOneTouchUp();
   }
+  roiStateByTrack.delete(tr.id);
 }
-
 
 /* ========= 検出結果の前処理（①重複カウント対策） ========= */
 function bboxContainsPoint(bbox, px, py){
@@ -1174,7 +1112,7 @@ function setupEventListeners(){
   window.addEventListener("resize", adjustCanvasSize);
 
   // 既存設定は測定中に変更されたら追跡器を再生成（挙動は従来通り）
-  ["max-lost","score-th","max-fps"].forEach(id=>{
+  ["min-hits","max-lost","score-th","max-fps"].forEach(id=>{
     document.getElementById(id).addEventListener("change", ()=>{
       if(isAnalyzing) setupTracker();
     });
@@ -1218,6 +1156,7 @@ function startAnalysis(){
   unknownOneTouch = 0;
   unknownClassMismatch = 0;
   recordsHourly = [];
+  roiStateByTrack.clear();
 
   analysisStartTime = new Date();
   hourWindowStart = new Date();
@@ -1251,6 +1190,7 @@ function stopAnalysis(){
   unknownOneTouch = 0;
   unknownClassMismatch = 0;
   recordsHourly = [];
+  roiStateByTrack.clear();
 
   updateCountUI();
   updateLogDisplay(true);
@@ -1362,7 +1302,7 @@ function adjustCanvasSize(){
 function setupTracker(){
   tracker = new Tracker({
     iouThreshold: 0.4,
-    minHits: 1, // スマホの処理落ち対策として1に固定
+    minHits: Number(DOM.minHits.value),
     maxLostAge: Number(DOM.maxLost.value),
 
     // classicロジック：confirmedで即カウント（従来に近い）
@@ -1705,37 +1645,6 @@ function updateCountUI(){
   //updateCountSummaryUI();
 }
 
-// モード（車両/歩行者）に合わせてカウントを加算する共通関数
-// ※ROIロジック（加重投票/消失回収）からも classic ロジックからも呼ばれる
-function applyCountByMode(cls){
-  if(!cls) return;
-
-  if(countMode === "pedestrian"){
-    // 歩行者モード：person 以外はカウントしない（フィルタ済み想定だが保険）
-    if(cls !== "person") return;
-    countsCurrentHour.person = Number(countsCurrentHour.person || 0) + 1;
-  }else{
-    // 車両モード：person は無視
-    if(cls === "person") return;
-    if(VEHICLE_CATS.includes(cls)){
-      countsCurrentHour[cls] = Number(countsCurrentHour[cls] || 0) + 1;
-    }else{
-      // 想定外クラスは Unknown として扱う（UI/CSVの整合性維持）
-      unknownTotal = Number(unknownTotal || 0) + 1;
-      unknownClassMismatch = Number(unknownClassMismatch || 0) + 1;
-    }
-  }
-
-  // UI更新（軽量なので毎回OK）
-  try{ updateCountUI(); }catch(_e){}
-  try{ setupCountSummaryUI(); }catch(_e){}
-  try{ updateCountSummaryUI(); }catch(_e){}
-  try{ updateHourTitle(); }catch(_e){}
-
-  // 直近ログ/スナップショット
-  try{ pushHourlySnapshotIfNeeded(); }catch(_e){}
-}
-
 async function exportCSV(data, geo, unknown){
   if(!data || data.length === 0){
     toast("出力するデータがありません", true);
@@ -1887,7 +1796,8 @@ function formatTimestamp(d){
       "count-mode", // 測定対象（モード）
       "score-th",
       "iou-th",
-            "max-lost",
+      "min-hits",
+      "max-lost",
       "max-fps",
       // 予約系も止めたいなら追加
       "auto-start-dt",
@@ -2040,7 +1950,7 @@ function formatTimestamp(d){
       `測定対象: ${getUiText(DOM.countModeSelect)}`,    // 例: 車両 / 歩行者
       `スコアしきい値: ${getUiText(DOM.scoreTh)}`,      // 例: 50%
       `検出FPS上限: ${getUiText(DOM.maxFps)}`,          // 例: 15fps
-      `確定必要フレーム: 固定(1frm)`,                    // minHitsは内部固定
+      `確定必要フレーム: ${getUiText(DOM.minHits)}`,    // 例: 3frm
       `IoUしきい値: ${getUiText(DOM.iouTh)}`,           // 例: 40%
       `見失い許容量: ${getUiText(DOM.maxLost)}`,        // 例: 15frm
     ].join("\n");
