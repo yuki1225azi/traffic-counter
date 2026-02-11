@@ -1,9 +1,5 @@
 /* =========================
    スマート交通量カウンター (UI改善版v15)
-   - 見た目（HTML/CSS）は変更しない
-   - 追加機能:
-     ① 車両/歩行者モード（車内の人の二重計上を軽減）
-     ② ROIボックス・境界2回接触によるカウント（URLでON/OFF）
    ========================= */
 
 const UI_CATS = ['car','bus','truck','motorcycle','bicycle','person'];
@@ -259,10 +255,10 @@ function setupTitleDescription(){
 ・解析はブラウザ内で完結し、映像の送信や録画は行わないため機密性が高い。
 ・データは1時間ごと、および終了時に位置情報付きCSVファイルとして保存される。
 
-【測定枠(エリア)の設定】
-・画面上の測定枠をドラッグして、測定したい範囲に合わせる。
+【測定エリア(枠)の設定】
+・画面上の測定枠をドラッグして、測定したいエリア(位置)に合わせる。
 ・対象が測定枠を通過した際、または枠内での検知が終了した時点でカウントされる。
-・道路を横切るように測定枠を設置すると精度が向上する。
+・道路を横切るように測定エリアを設置すると精度が向上する。
 
 【測定中の注意】
 ・開始後は誤操作防止のため、測定枠の移動や設定変更がロックされる。
@@ -314,7 +310,7 @@ const HELP = {
       "測定する対象の種類。(選択肢：車両 / 歩行者)\n・車両：乗用車、バス、トラック、バイク、自転車\n・歩行者：人のみ",
     
     "hit-area": 
-      "AIが検出した枠のうち、判定に使用する中心エリアの広さ。(設定範囲：10~100%)\n・すり抜け(カウント漏れ)が起きる場合は値を大きくする。\n・隣の車線を誤って拾う場合は値を小さくする。",
+      "カウント対象とする、物体中心部の判定幅。(設定範囲：10~100%)\n・すり抜け(カウント漏れ)が起きる場合は値を大きくする。\n・隣の車線を誤って拾う場合は値を小さくする。",
     
     "score-th":
       "AIが物体であると判断する際の自信の度合い。(設定範囲：10~90%)\n・誤検知(看板などを車と認識)が多い場合は値を大きくする。\n・未検知(車を見逃す)が多い場合は値を小さくする。",
@@ -908,8 +904,8 @@ function applyCountByMode(cls){
 function updateRoiCountingForConfirmedTracks(){
   const r = getRoiPx(); 
   
-  // ★修正: 画面の設定値(マージン)を使うように変更
-  const margin = DOM.hitArea ? Number(DOM.hitArea.value) : 0.0;
+  // ★判定ロジック: 画面の「判定中心幅」の設定値を反映
+  const centerWidth = DOM.hitArea ? Number(DOM.hitArea.value) : 0.0;
 
   for(const tr of tracker.tracks){
     // 確定していない、または既にカウント済みのトラックは無視
@@ -932,7 +928,12 @@ const c = tr.center();
     }
 
     // 1. ROI内判定
-    const inRoi = (c.x >= r.x - margin && c.x <= r.x + r.w + margin && c.y >= r.y - margin && c.y <= r.y + r.h + margin);
+    const inRoi = (
+  c.x >= r.x - centerWidth && 
+  c.x <= r.x + r.w + centerWidth && 
+  c.y >= r.y - centerWidth && 
+  c.y <= r.y + r.h + centerWidth
+);
     
     // ★追加: 枠内にいても、止まっていたら「枠内にいない」ことにする
     if(inRoi && !isMoving){
@@ -1621,7 +1622,7 @@ async function exportCSV(data, geo, unknown){
     `経度: ${geo.lng}`,
     `期間: ${formatTimestamp(analysisStartTime || new Date())} - ${formatTimestamp(endTime)}`,
     `測定対象: ${getUiText(DOM.countModeSelect)}`,
-    `判定有効範囲: ${getUiText(DOM.hitArea)}`,
+    `判定中心幅: ${getUiText(DOM.hitArea)}`,
     `検知感度: ${getUiText(DOM.scoreTh)}`,
     `解析頻度: ${getUiText(DOM.maxFps)}`,
     `見失い猶予: ${getUiText(DOM.maxLost)}`,
