@@ -613,12 +613,18 @@ const moveDrag = (ev)=>{
     dragging = false;
     anchor = null;
     
-    // 指を離したらスクロールを許可に戻す
-    c.style.touchAction = "auto";
+    // 指を離しても、スリップ防止のため0.5秒間はスクロール禁止を維持する
+    setTimeout(() => {
+      // 0.5秒後に、まだ次のドラッグが始まっていない場合のみスクロールを許可に戻す
+      if (!dragging) {
+        c.style.touchAction = "auto";
+      }
+    }, 500);
+
     c.classList.remove("roi-active");
-    
     saveRoi();
   };
+
   c.addEventListener("pointerdown", startDrag, { passive: false });
   c.addEventListener("pointermove", moveDrag);
   c.addEventListener("pointerup", endDrag);
