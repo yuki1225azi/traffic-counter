@@ -774,58 +774,103 @@ class Tracker {
     return union > 0 ? inter/union : 0;
   }
 
-  updateWithDetections(dets){
-    // dets: [{bbox, score, cls}]
+  updateWithDetections(dets) {
     const matches = [];
-    const unmatchedDets = new Set(dets.map((_, i)=>i));
-    const unmatchedTracks = new Set(this.tracks.map((_, i)=>i));
-    const pairs = [];
+    const unmatchedDets = new Set(dets.map((_, i) => i));
+    const unmatchedTracks = new Set(this.tracks.map((_, i) => i));
 
-    for(let ti=0; ti<this.tracks.length; ti++){
-      for(let di=0; di<dets.length; di++){
-        pairs.push({ ti, di, iou: Tracker.iou(this.tracks[ti].bbox, dets[di].bbox) });
+    // --- 第1段階：IOU（重なり）によるマッチング ---
+    // 既存のロジック。形があまり変わらないときはこれで判定。
+    const iouPairs = [];
+    for (let ti = 0; ti < this.tracks.length; ti++) {
+      for (let di = 0; di < dets.length; di++) {
+        const score = Tracker.iou(this.tracks[ti].bbox, dets[di].bbox);
+        if (score >= this.iouThreshold) {
+          iouPairs.push({ ti, di, score });
+        }
       }
     }
-    pairs.sort((a,b)=>b.iou-a.iou);
-
-    for(const p of pairs){
-      if(p.iou < this.iouThreshold) break;
-      if(unmatchedTracks.has(p.ti) && unmatchedDets.has(p.di)){
+    // スコアが高い順にマッチング確定
+    iouPairs.sort((a, b) => b.score - a.score);
+    for (const p of iouPairs) {
+      if (unmatchedTracks.has(p.ti) && unmatchedDets.has(p.di)) {
         matches.push(p);
         unmatchedTracks.delete(p.ti);
         unmatchedDets.delete(p.di);
       }
     }
 
-    // 更新
-    for(const m of matches){
+    // --- 第2段階（追加機能）：中心点距離による救済マッチング ---
+    // 重なり判定で漏れたものを、「距離が近い」という理由で同一とみなす
+    // クラスが変わって枠のサイズが激変したときに効果を発揮します。
+    const distPairs = [];
+    const MAX_DIST_REL = 0.2; // 画面幅の20%以内の移動なら同一とみなす
+
+    const W = DOM.canvas.width || 1;
+    const H = DOM.canvas.height || 1;
+    const norm = Math.sqrt(W * W + H * H); // 画面の対角線長
+
+    for (const ti of unmatchedTracks) {
+      const tr = this.tracks[ti];
+      const c1 = tr.center();
+      
+      for (const di of unmatchedDets) {
+        const d = dets[di];
+        const cx = d.bbox[0] + d.bbox[2] / 2;
+        const cy = d.bbox[1] + d.bbox[3] / 2;
+        
+        // 距離を計算
+        const dist = Math.sqrt((c1.x - cx) ** 2 + (c1.y - cy) ** 2);
+        const relDist = dist / norm;
+
+        // 距離が近ければ候補にする
+        if (relDist < MAX_DIST_REL) {
+          // 距離が近いほどスコアが高いとする（逆数的な考え）
+          distPairs.push({ ti, di, score: 1.0 - relDist });
+        }
+      }
+    }
+
+    // 距離が近い順にマッチング確定
+    distPairs.sort((a, b) => b.score - a.score);
+    for (const p of distPairs) {
+      if (unmatchedTracks.has(p.ti) && unmatchedDets.has(p.di)) {
+        matches.push(p);
+        unmatchedTracks.delete(p.ti);
+        unmatchedDets.delete(p.di);
+      }
+    }
+
+    // --- 結果の更新（既存コードと同じ） ---
+    // 更新（既存トラック）
+    for (const m of matches) {
       const tr = this.tracks[m.ti];
       const det = dets[m.di];
       tr.update(det);
-      if(tr.state === "tentative" && tr.hitStreak >= this.minHits){
+      if (tr.state === "tentative" && tr.hitStreak >= this.minHits) {
         tr.state = "confirmed";
         this.onConfirmed(tr);
       }
     }
 
-    // 新規
-    for(const di of unmatchedDets){
+    // 新規作成（どのトラックともマッチしなかった検出）
+    for (const di of unmatchedDets) {
       const det = dets[di];
       const tr = new Track(this.nextId++, det);
       this.tracks.push(tr);
     }
 
-    // 見失い加算
-    for(const ti of unmatchedTracks){
+    // 見失いカウント（検出されなかったトラック）
+    for (const ti of unmatchedTracks) {
       this.tracks[ti].lostAge++;
     }
 
-    // 破棄（ここでコールバック）
+    // 削除処理
     const kept = [];
-    for(const tr of this.tracks){
-      if(tr.lostAge <= this.maxLostAge){
+    for (const tr of this.tracks) {
+      if (tr.lostAge <= this.maxLostAge) {
         kept.push(tr);
-      }else{
+      } else {
         this.onRemoved(tr);
       }
     }
