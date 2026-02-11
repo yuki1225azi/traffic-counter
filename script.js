@@ -35,7 +35,6 @@ const DOM = {
   reserveBtn: document.getElementById("reserve-btn"),
   scoreTh: document.getElementById("score-th"),
   hitArea: document.getElementById("hit-area"),
-  minHits: document.getElementById("min-hits"),
   maxLost: document.getElementById("max-lost"),
   maxFps: document.getElementById("max-fps"),
   countModeSelect: document.getElementById("count-mode"),
@@ -81,7 +80,7 @@ function ensureInfoModal(){
         display:flex;
         align-items:center;
         justify-content:space-between;
-        padding: 12px 18px;       /* 余白を少し調整 */
+        padding: 8px 16px;       /* 余白を少し調整 */
         border-bottom: 1px solid #eee; /* 薄いグレーの区切り線 */
         font-weight: 700;
         font-size: 1.1rem;
@@ -103,7 +102,7 @@ function ensureInfoModal(){
         color: #333;
       }
       .info-modal-body{
-        padding: 18px;
+        padding: 12px 16px;
         overflow:auto;
         font-size: 0.95rem;
         line-height: 1.6;
@@ -207,93 +206,15 @@ function applyModeUiState(){
   }
 }
 
-/* ========= 合計表示（カウント枠の下） =========
-   - UI: 内訳なしで「確定合計（モード対象のみ）」「Unknown合計」「全体合計」
-   - カウント枠（.counts）の直下に挿入
-*/
-let COUNT_SUMMARY = { root:null, counted:null, unknown:null, total:null };
+/* ========= （合計表示のUIコードは削除しました） ========= */
 
-function injectCountSummaryStyle(){
-  if(document.getElementById("count-summary-style")) return;
-  const st = document.createElement("style");
-  st.id = "count-summary-style";
-  st.textContent = `
-    #realtime-stats .counts-summary{
-      margin-top:8px;
-      padding:10px 12px;
-      border:1px solid var(--border-light);
-      border-radius:6px;
-      background:#fff;
-      display:flex;
-      gap:12px;
-      flex-wrap:wrap;
-      font-size:0.92rem;
-    }
-    #realtime-stats .counts-summary .sum-item{
-      display:flex; gap:6px; align-items:baseline;
-      min-width: 120px;
-    }
-    #realtime-stats .counts-summary .sum-label{ color:#555; }
-    #realtime-stats .counts-summary .sum-value{ font-weight:700; }
-  `;
-  document.head.appendChild(st);
-}
-
-function setupCountSummaryUI(){
-  if(COUNT_SUMMARY.root) return;
-  const countsBox = document.querySelector("#realtime-stats .counts");
-  if(!countsBox) return;
-
-  injectCountSummaryStyle();
-
-  const root = document.createElement("div");
-  root.className = "counts-summary";
-  root.setAttribute("aria-label", "合計表示");
-
-  const mk = (labelTxt)=>{
-    const item = document.createElement("div");
-    item.className = "sum-item";
-    const lab = document.createElement("span");
-    lab.className = "sum-label";
-    lab.textContent = labelTxt;
-    const val = document.createElement("span");
-    val.className = "sum-value";
-    val.textContent = "0";
-    item.appendChild(lab);
-    item.appendChild(val);
-    return { item, val };
-  };
-
-  const a = mk("合計（確定）:");
-  const b = mk("合計（Unknown）:");
-  const c = mk("合計（全体）:");
-
-  root.appendChild(a.item);
-  root.appendChild(b.item);
-  root.appendChild(c.item);
-
-  countsBox.insertAdjacentElement("afterend", root);
-
-  COUNT_SUMMARY = { root, counted:a.val, unknown:b.val, total:c.val };
-}
-
+// この関数だけは計算に必要なので残します
 function getCountedTotalByMode(counts){
   if(countMode === "pedestrian"){
     return Number(counts.person || 0);
   }
   // vehicleモード
   return VEHICLE_CATS.reduce((s,k)=>s + Number(counts[k] || 0), 0);
-}
-
-function updateCountSummaryUI(){
-  if(!COUNT_SUMMARY.root) return;
-  const counted = getCountedTotalByMode(countsCurrentHour);
-  const unknown = Number(unknownTotal || 0);
-  const total = counted + unknown;
-
-  COUNT_SUMMARY.counted.textContent = counted;
-  COUNT_SUMMARY.unknown.textContent = unknown;
-  COUNT_SUMMARY.total.textContent = total;
 }
 
 function setupTitleDescription(){
@@ -332,33 +253,30 @@ function setupTitleDescription(){
   btn.textContent = "i";
   btn.setAttribute("aria-label", "利用ガイド");
 
-const HELP = `【概要】
-・AIがカメラ映像から5種類の車両や歩行者を判別し、リアルタイムで集計を行う。
-・解析はすべてブラウザ内で完結するため、外部への映像送信や録画は行わず、高い機密性を保持している。
-・測定データは1時間ごと、および終了時にCSVファイルとして自動出力され、GPSによる位置情報も記録される。
+  // ★修正箇所：変数名を変更し、クリックイベントを追加
+  const APP_GUIDE_TEXT = `【概要】
+・AIがカメラ映像から車両5種(乗用車・バス・トラック・バイク・自転車)と歩行者を判別し、リアルタイムで集計を行う。
+・解析はブラウザ内で完結し、映像の送信や録画は行わないため機密性が高い。
+・データは1時間ごと、および終了時に位置情報付きCSVファイルとして保存される。
 
-【設定と操作ロック】
-・測定エリアの指定や各種設定は、「測定開始」前に完了させる。
-・測定中は誤操作防止のため、枠の移動や設定の変更がロックされ、操作できない。
+【測定枠(エリア)の設定】
+・画面上の測定枠をドラッグして、測定したい範囲に合わせる。
+・対象が測定枠を通過した際、または枠内での検知が終了した時点でカウントされる。
+・道路を横切るように測定枠を設置すると精度が向上する。
 
-【測定エリアの設定】
-・画面上の枠の「四隅のマーク」をドラッグして、測定エリアの大きさや位置を調整する。
-・物体が枠の境界線を「入って・出る」と2回接触した瞬間に、1台（1人）として集計される。
-・道路を横切るように枠を設置することが、判定精度を向上させるコツである。
-
-【安定稼働】
-・解析が停止する原因となるため、測定中はタブの切り替えや他アプリの使用、画面のスリープを避ける。
-・リアルタイム解析はバッテリーを激しく消費するため、電源に接続した状態での使用を推奨する。`;
+【測定中の注意】
+・開始後は誤操作防止のため、測定枠の移動や設定変更がロックされる。
+・処理停止を防ぐため、他アプリへの切り替えや画面スリープは避ける。
+・バッテリー消費が激しいため、充電しながらの使用を推奨する。`;
 
   btn.addEventListener("click", (e)=>{
     e.preventDefault();
     e.stopPropagation();
-    showInfoModal("利用ガイド", HELP);
+    showInfoModal("利用ガイド", APP_GUIDE_TEXT);
   });
 
   title.appendChild(btn);
 }
-
 
 /* ========= 設定項目ヘルプ（各項目横のiボタン） ========= */
 function setupSettingItemHelpPopups(){
@@ -393,18 +311,21 @@ function setupSettingItemHelpPopups(){
 // 2) 各設定の説明（id → 日本語説明）
 const HELP = {
     "count-mode":
-      "測定対象を切り替える。\n・車両：乗用車、バス、トラック、バイク、自転車\n・歩行者：人のみ",
+      "測定する対象の種類。(選択肢：車両 / 歩行者)\n・車両：乗用車、バス、トラック、バイク、自転車\n・歩行者：人のみ",
+    
     "hit-area": 
-      "ROI枠との接触を判定する車体の範囲である。(設定範囲：10~100%)\n・処理落ちですり抜ける場合は広げる。\n・隣の車線を誤検知する場合は狭める。",
+      "AIが検出した枠のうち、判定に使用する中心エリアの広さ。(設定範囲：10~100%)\n・すり抜け(カウント漏れ)が起きる場合は値を大きくする。\n・隣の車線を誤って拾う場合は値を小さくする。",
+    
     "score-th":
-      "AIが物体を発見する自信の度合いである。(入力範囲：10~90%)\n・誤検知が多い場合は上げる。\n・未検知が多い場合は下げる。",
+      "AIが物体であると判断する際の自信の度合い。(設定範囲：10~90%)\n・誤検知(看板などを車と認識)が多い場合は値を大きくする。\n・未検知(車を見逃す)が多い場合は値を小さくする。",
+    
     "max-fps":
-      "1秒間の処理回数である。(入力範囲：5~30fps)\n・高速な車を見逃す場合は上げる。\n・発熱や電池消費を抑える場合は下げる。",
-    "min-hits":
-      "検知確定に必要な連続フレーム数である。(入力範囲：1~9frm)\n・揺れる木などのノイズが多い場合は上げる。\n・通過の速い車がカウントされない場合は下げる。",
+      "1秒間に行う画像解析の回数。(設定範囲：5~30fps)\n・高速な車を見逃す場合は値を大きくする。\n・スマホの発熱や電池消費を抑える場合は値を小さくする。",
+     
     "max-lost":
-      "見失いを許容するフレーム数である。(入力範囲：5~30frm)\n・木や影などの遮蔽物でIDが途切れる場合は上げる。\n・別の車を同一と誤認する場合は下げる。",
+      "物体を見失っても追跡を継続する猶予フレーム数。(設定範囲：5~30frm)\n・木や影などの遮蔽物で追跡が切れる場合は値を大きくする。\n・別の車を同一と誤認してしまう場合は値を小さくする。",
   };
+
   const grid = document.querySelector("#settings-panel .settings-grid");
   if(!grid) return;
 
@@ -498,9 +419,7 @@ const zeroCounts = () => ({
   car: 0, bus: 0, truck: 0, motorcycle: 0, bicycle: 0, person: 0
 });
 let countsCurrentHour = zeroCounts();
-let unknownTotal = 0;              // Unknown合計（UI/CSV）
-let unknownOneTouch = 0;           // Unknown内訳：接触1回のみ
-let unknownClassMismatch = 0;      // Unknown内訳：クラス不一致
+let unknownTotal = 0; // ※バックアップ機能の互換性のために変数自体は0で残しておくのが安全です
 
 let recordsHourly = [];
 let autoSaveTimer = null;
@@ -767,30 +686,111 @@ function drawRoi(ctx){
   ctx.restore();
 }
 
+/* ========= 幾何計算ヘルパー（ワープ判定用） ========= */
+// 線分(p1-p2)と矩形(rect)が交差するか判定
+function isLineIntersectingRect(p1, p2, rect) {
+  // AABBチェック（簡易判定：範囲外なら即false）
+  let minX = Math.min(p1.x, p2.x), maxX = Math.max(p1.x, p2.x);
+  let minY = Math.min(p1.y, p2.y), maxY = Math.max(p1.y, p2.y);
+  if (maxX < rect.x || minX > rect.x + rect.w || maxY < rect.y || minY > rect.y + rect.h) return false;
+
+  // 矩形の4辺との交差判定
+  const segments = [
+    [{x:rect.x, y:rect.y}, {x:rect.x+rect.w, y:rect.y}], // Top
+    [{x:rect.x+rect.w, y:rect.y}, {x:rect.x+rect.w, y:rect.y+rect.h}], // Right
+    [{x:rect.x+rect.w, y:rect.y+rect.h}, {x:rect.x, y:rect.y+rect.h}], // Bottom
+    [{x:rect.x, y:rect.y+rect.h}, {x:rect.x, y:rect.y}] // Left
+  ];
+  for(let s of segments) {
+    if (getLineIntersection(p1, p2, s[0], s[1])) return true;
+  }
+  return false;
+}
+
+// 2つの線分の交差判定
+function getLineIntersection(p0, p1, p2, p3) {
+  let s1_x = p1.x - p0.x;     let s1_y = p1.y - p0.y;
+  let s2_x = p3.x - p2.x;     let s2_y = p3.y - p2.y;
+  let s = (-s1_y * (p0.x - p2.x) + s1_x * (p0.y - p2.y)) / (-s2_x * s1_y + s1_x * s2_y);
+  let t = ( s2_x * (p0.y - p2.y) - s2_y * (p0.x - p2.x)) / (-s2_x * s1_y + s1_x * s2_y);
+  return (s >= 0 && s <= 1 && t >= 0 && t <= 1);
+}
+
 /* ========= 追跡器（マルチクラス） ========= */
 class Track {
   constructor(id, det){
     this.id = id;
-    this.bbox = det.bbox;        // [x,y,w,h]
+    this.bbox = det.bbox;
     this.score = det.score;
-    this.cls = det.cls;          // class label
+    this.cls = det.cls;
     this.state = "tentative";
-    this.hitStreak = 1;
+    this.hitStreak = 1; 
     this.lostAge = 0;
     this.createdAt = performance.now();
     this.lastSeenAt = this.createdAt;
+
+    // --- 新ロジック用変数（追加） ---
+    this.prevCenter = this.center(); // ワープ判定用（前の位置）
+    this.roiVotes = {};     // ROI内での投票 (本命)
+    this.globalVotes = {};  // 全期間の投票 (保険)
+    this.totalFramesInRoi = 0;
+    this.consecutiveOutsideRoi = 0; // 連続退出カウンタ
+    this.warpDetected = false;
+    this.counted = false;
+    
+    // 作成時も1票入れておく
+    this.voteGlobal(det.cls, det.score);
   }
+
   center(){
     const [x,y,w,h] = this.bbox;
     return { x: x + w/2, y: y + h/2 };
   }
+
   update(det){
+    this.prevCenter = this.center(); // 更新前に現在地を保存
     this.bbox = det.bbox;
     this.score = det.score;
     this.cls = det.cls;
     this.hitStreak++;
     this.lostAge = 0;
     this.lastSeenAt = performance.now();
+    
+    // 毎フレーム全体投票は行う
+    this.voteGlobal(det.cls, det.score);
+  }
+
+  // ROI内での投票（本命）
+  voteRoi(cls, score){
+    if(!this.roiVotes[cls]) this.roiVotes[cls] = 0;
+    this.roiVotes[cls] += score;
+    this.totalFramesInRoi++;
+  }
+
+  // 全体投票（保険）
+  voteGlobal(cls, score){
+    if(!this.globalVotes[cls]) this.globalVotes[cls] = 0;
+    this.globalVotes[cls] += score;
+  }
+
+  // ハイブリッド判定で勝者を決める
+  getWinnerClass(){
+    const candidates = new Set([...Object.keys(this.roiVotes), ...Object.keys(this.globalVotes)]);
+    let bestCls = this.cls;
+    let maxScore = -1;
+
+    for(const c of candidates){
+      const rScore = this.roiVotes[c] || 0;
+      const gScore = this.globalVotes[c] || 0;
+      // 計算式: ROIスコア(本命) + 全体スコア(保険)の10%
+      const total = rScore + (gScore * 0.1);
+      
+      if(total > maxScore){
+        maxScore = total;
+        bestCls = c;
+      }
+    }
+    return bestCls;
   }
 }
 
@@ -799,7 +799,7 @@ class Tracker {
     this.tracks = [];
     this.nextId = 1;
     this.iouThreshold = opts.iouThreshold ?? 0.4;
-    this.minHits = opts.minHits ?? 3;
+    this.minHits = 1; // ★スマホ対策: 1に固定（設定値無視）
     this.maxLostAge = opts.maxLostAge ?? 30;
     this.onConfirmed = opts.onConfirmed ?? (()=>{});
     this.onRemoved   = opts.onRemoved   ?? (()=>{});
@@ -880,47 +880,9 @@ class Tracker {
 
 let tracker = null;
 
-/* ========= ROIカウント（境界2回接触） ========= */
-const roiStateByTrack = new Map();
-/*
-  roiState:
-  {
-    prevIn: boolean,
-    contactCount: 0|1,
-    firstClass: string|null,
-    lastContactFrame: number
-  }
-*/
-const ROI_DEBOUNCE_FRAMES = 3;
+/* ========= カウントロジック (Ver3.0) ========= */
 
-function ensureRoiState(track){
-  if(!roiStateByTrack.has(track.id)){
-    const r = getRoiPx();
-    const [bx, by, bw, bh] = track.bbox;
-    // ★修正：設定値(margin)をDOMから取得（安全のためデフォルト0.2）
-    const margin = DOM.hitArea ? Number(DOM.hitArea.value) : 0.2;
-    
-    // 判定用ボックス（芯）の計算
-    const ix = bx + (bw * margin);
-    const iy = by + (bh * margin);
-    const iw = bw * (1 - (margin * 2));
-    const ih = bh * (1 - (margin * 2));
-    const isCoreOverlapping = (
-      ix < r.x + r.w && ix + iw > r.x &&
-      iy < r.y + r.h && iy + ih > r.y
-    );
-    const initialIn = isCoreOverlapping;
-    roiStateByTrack.set(track.id, {
-      prevIn: initialIn,
-      // ★重要：確定した瞬間にすでにROI内なら「接触1回目済み」として扱う（取り逃がし防止）
-      contactCount: initialIn ? 1 : 0,
-      firstClass: initialIn ? track.cls : null,
-      lastContactFrame: -999999
-    });
-  }
-  return roiStateByTrack.get(track.id);
-}
-
+// 必要なヘルパー関数（再定義）
 function isVehicleClass(cls){
   return VEHICLE_CATS.includes(cls);
 }
@@ -931,91 +893,97 @@ function countUp(cls){
   updateCountUI();
 }
 
-function countUnknownOneTouchUp(){
-  unknownTotal += 1;
-  unknownOneTouch += 1;
-  updateCountSummaryUI();
-}
-function countUnknownClassMismatchUp(){
-  unknownTotal += 1;
-  unknownClassMismatch += 1;
-  updateCountSummaryUI();
-}
-
 function applyCountByMode(cls){
   // モードに応じてカウント対象を絞る
   if(countMode === "pedestrian"){
     if(cls === "person") countUp("person");
     return;
   }
-  // vehicleモード：車両のみ（personは無視）
+  // vehicleモード：車両のみ
   if(isVehicleClass(cls)) countUp(cls);
 }
 
-function finalizeRoiTrip(firstCls, secondCls){
-  if(firstCls === secondCls){
-    applyCountByMode(secondCls);
-  }else{
-    // 1回目と2回目でクラスが異なる → Unknown
-    countUnknownClassMismatchUp();
-  }
-}
-
+// --- メイン判定ロジック（新・滞在型） ---
 
 function updateRoiCountingForConfirmedTracks(){
   const r = getRoiPx(); 
-  // ★ループの外で設定値を取得
-  const margin = DOM.hitArea ? Number(DOM.hitArea.value) : 0.2;
+  
+  // ★修正: 画面の設定値(マージン)を使うように変更
+  const margin = DOM.hitArea ? Number(DOM.hitArea.value) : 0.0;
+
   for(const tr of tracker.tracks){
-    if(tr.state !== "confirmed") continue;
-    if(tr.lostAge > 0) continue; 
-    const st = ensureRoiState(tr);
-    const [bx, by, bw, bh] = tr.bbox;
-    // 設定値マージンを使って芯を計算
-    const ix = bx + (bw * margin);
-    const iy = by + (bh * margin);
-    const iw = bw * (1 - (margin * 2));
-    const ih = bh * (1 - (margin * 2));
-    const inNow = (
-      ix < r.x + r.w &&
-      ix + iw > r.x &&
-      iy < r.y + r.h &&
-      iy + ih > r.y
-    );
-    if(inNow !== st.prevIn){
-      if(frameIndex - st.lastContactFrame >= ROI_DEBOUNCE_FRAMES){
-        st.lastContactFrame = frameIndex;
-        if(st.contactCount === 0){
-          st.contactCount = 1;
-          st.firstClass = tr.cls;
-        }else if(st.contactCount === 1){
-          finalizeRoiTrip(st.firstClass, tr.cls);
-          roiStateByTrack.delete(tr.id); 
-        }
+    // 確定していない、または既にカウント済みのトラックは無視
+    if(tr.state !== "confirmed" || tr.counted) continue;
+    
+    // ロスト中のトラックは、ここでは更新せず onRemoved で回収する
+    if(tr.lostAge > 0) continue;
+
+const c = tr.center();
+    const prev = tr.prevCenter;
+
+    // ★追加: 動いているかチェック（駐車車両・看板対策）
+    // 前回の位置(prev)と比べて、ほとんど動いていなければ「停止中」とみなす
+    let isMoving = true;
+    if(prev){
+       // 移動距離を計算（三平方の定理）
+       const dist = Math.sqrt((c.x - prev.x)**2 + (c.y - prev.y)**2);
+       // 2ピクセル未満の移動なら「止まっている」と判断
+       if(dist < 2.0) isMoving = false; 
+    }
+
+    // 1. ROI内判定
+    const inRoi = (c.x >= r.x - margin && c.x <= r.x + r.w + margin && c.y >= r.y - margin && c.y <= r.y + r.h + margin);
+    
+    // ★追加: 枠内にいても、止まっていたら「枠内にいない」ことにする
+    if(inRoi && !isMoving){
+        // 何もしない（次のループへ）
+        continue;
+    }
+
+    // 2. ワープ（線分交差）判定
+    // ROI外かつ、前回の位置が記録されていればチェック
+    let isWarp = false;
+    if(!inRoi && prev){
+      // ステップ2で追加した関数を使用
+      isWarp = isLineIntersectingRect(prev, c, r);
+    }
+
+    if(inRoi || isWarp){
+      // --- 滞在中または通過中 ---
+      
+      // ワープ時は強制的に「ROI内」として1票入れる
+      // （ハイブリッド判定の「本命スコア」を増やすため）
+      tr.voteRoi(tr.cls, tr.score); 
+      
+      if(isWarp) tr.warpDetected = true;
+      tr.consecutiveOutsideRoi = 0; // 連続退出カウントをリセット
+    } else {
+      // --- ROI外 ---
+      tr.consecutiveOutsideRoi++;
+
+      // 連続2フレーム外 ＆ (過去に滞在実績あり OR ワープ通過) ＆ 未カウントなら「退出」とみなす
+      if(tr.consecutiveOutsideRoi >= 2){
+         if(tr.totalFramesInRoi >= 2 || tr.warpDetected){
+            const winner = tr.getWinnerClass();
+            applyCountByMode(winner);
+            tr.counted = true;
+         }
       }
-      st.prevIn = inNow;
     }
   }
 }
 
 function onTrackRemoved(tr){
-  // ROIロジックの「接触1回のみ」→ 車両不明
-  const st = roiStateByTrack.get(tr.id);
-  if(!st) return;
-  if(st.contactCount === 1){
-    countUnknownOneTouchUp();
+  // 消失回収 (Lost Recovery)
+  // 画面端で消えたり、追跡が切れた場合に拾う
+  if(!tr.counted){
+    // ROI滞在実績が十分(2フレーム以上) または ワープ経験あり
+    if(tr.totalFramesInRoi >= 2 || tr.warpDetected){
+      const winner = tr.getWinnerClass();
+      applyCountByMode(winner);
+      tr.counted = true;
+    }
   }
-  roiStateByTrack.delete(tr.id);
-}
-
-/* ========= 検出結果の前処理（①重複カウント対策） ========= */
-function bboxContainsPoint(bbox, px, py){
-  const [x,y,w,h] = bbox;
-  return (px >= x && px <= x+w && py >= y && py <= y+h);
-}
-function bboxCenter(bbox){
-  const [x,y,w,h] = bbox;
-  return { x: x+w/2, y: y+h/2 };
 }
 
 function filterDetectionsByMode(rawDets){
@@ -1112,7 +1080,7 @@ function setupEventListeners(){
   window.addEventListener("resize", adjustCanvasSize);
 
   // 既存設定は測定中に変更されたら追跡器を再生成（挙動は従来通り）
-  ["min-hits","max-lost","score-th","max-fps"].forEach(id=>{
+  ["max-lost","score-th","max-fps"].forEach(id=>{
     document.getElementById(id).addEventListener("change", ()=>{
       if(isAnalyzing) setupTracker();
     });
@@ -1153,10 +1121,7 @@ function startAnalysis(){
  
   countsCurrentHour = zeroCounts();
   unknownTotal = 0;
-  unknownOneTouch = 0;
-  unknownClassMismatch = 0;
   recordsHourly = [];
-  roiStateByTrack.clear();
 
   analysisStartTime = new Date();
   hourWindowStart = new Date();
@@ -1182,15 +1147,12 @@ function stopAnalysis(){
   stopAutoSaveHourly();
 
   if(recordsHourly.length > 0){
-    exportCSV(recordsHourly, geo, { total: unknownTotal, oneTouch: unknownOneTouch, classMismatch: unknownClassMismatch });
+    exportCSV(recordsHourly, geo); 
   }
 
   countsCurrentHour = zeroCounts();
   unknownTotal = 0;
-  unknownOneTouch = 0;
-  unknownClassMismatch = 0;
   recordsHourly = [];
-  roiStateByTrack.clear();
 
   updateCountUI();
   updateLogDisplay(true);
@@ -1302,7 +1264,6 @@ function adjustCanvasSize(){
 function setupTracker(){
   tracker = new Tracker({
     iouThreshold: 0.4,
-    minHits: Number(DOM.minHits.value),
     maxLostAge: Number(DOM.maxLost.value),
 
     // classicロジック：confirmedで即カウント（従来に近い）
@@ -1454,8 +1415,8 @@ function startAutoSaveHourly(){
         timestamp: formatTimestamp(endTime), // xx:59:59
         ...snapshotA,
         unknown_total: unknownTotal,
-        unknown_one_touch: unknownOneTouch,
-        unknown_class_mismatch: unknownClassMismatch,
+        unknown_one_touch: 0,
+        unknown_class_mismatch: 0,
         total_counted_mode: getCountedTotalByMode(snapshotA),
         total_all: getCountedTotalByMode(snapshotA) + unknownTotal
       };
@@ -1463,7 +1424,7 @@ function startAutoSaveHourly(){
       recordsHourly.push(rowA);
 
       // ファイルA（前の1時間分）を出力
-      await exportCSV(recordsHourly, geo, { total: unknownTotal, oneTouch: unknownOneTouch, classMismatch: unknownClassMismatch });
+      await exportCSV(recordsHourly, geo);
 
 
       // -------------------------------------------------
@@ -1474,8 +1435,6 @@ function startAutoSaveHourly(){
       recordsHourly = [];
       countsCurrentHour = zeroCounts();
       unknownTotal = 0;
-      unknownOneTouch = 0;
-      unknownClassMismatch = 0;
 
       // 新しい時間の開始時刻（xx:00:00）
       // nextHour変数をそのまま使うとズレがない
@@ -1531,8 +1490,8 @@ const row = {
   timestamp: formatTimestamp(new Date(t)),
   ...snapshot,
   unknown_total: unknownTotal,
-  unknown_one_touch: unknownOneTouch,
-  unknown_class_mismatch: unknownClassMismatch,
+  unknown_one_touch: 0,
+  unknown_class_mismatch: 0,
   total_counted_mode: getCountedTotalByMode(snapshot),
   total_all: getCountedTotalByMode(snapshot) + unknownTotal
 };
@@ -1618,24 +1577,18 @@ function updateLogDisplay(clear=false){
 }
 
 function updateHourTitle(){
-  // .padStartを削除し、数値のまま取得（例: 1, 9, 10）
   const h = (hourWindowStart || new Date()).getHours();
 
   if(countMode === "pedestrian"){
     // 歩行者モード
-    const confirmed = countsCurrentHour.person || 0;
-    const oneTouch = unknownOneTouch || 0;
-    const total = confirmed + oneTouch;
-    
-    DOM.hourTitle.textContent = `${h}時台の通行量：計${total}人(うち、判定不能 ${oneTouch}人)`;
+    const total = countsCurrentHour.person || 0;
+    DOM.hourTitle.textContent = `${h}時台の通行量`;
     return;
   }
 
   // 車両モード
-  const counted = getCountedTotalByMode(countsCurrentHour);
-  const unk = Number(unknownTotal || 0);
-  const total = counted + unk;
-  DOM.hourTitle.textContent = `${h}時台の交通量：計${total}台(うち、車種不明 ${unk}台)`;
+  const total = getCountedTotalByMode(countsCurrentHour);
+  DOM.hourTitle.textContent = `${h}時台の交通量：計${total}台`;
 }
 function updateCountUI(){
   for(const k of UI_CATS){
@@ -1653,36 +1606,56 @@ async function exportCSV(data, geo, unknown){
 
   const endTime = new Date();
   const noun = modeNoun();
+
+  // ▼▼▼ UIのテキストを取得するヘルパー ▼▼▼
+  const getUiText = (el) => {
+    if(el && el.options && el.selectedIndex >= 0){
+      return el.options[el.selectedIndex].text;
+    }
+    return "";
+  };
+
+  // ▼▼▼ メタデータ（ここだけに残す） ▼▼▼
   const metadata = [
     `緯度: ${geo.lat}`,
     `経度: ${geo.lng}`,
     `期間: ${formatTimestamp(analysisStartTime || new Date())} - ${formatTimestamp(endTime)}`,
-    `スコアしきい値: ${DOM.scoreTh.value}`,
-    `検出FPS上限: ${DOM.maxFps.value}`,
-    `対象: ${countMode}`,
+    `測定対象: ${getUiText(DOM.countModeSelect)}`,
+    `判定有効範囲: ${getUiText(DOM.hitArea)}`,
+    `検知感度: ${getUiText(DOM.scoreTh)}`,
+    `解析頻度: ${getUiText(DOM.maxFps)}`,
+    `見失い猶予: ${getUiText(DOM.maxLost)}`,
   ].join("\n");
 
-  // UIの表は変えない（見た目維持）のため、CSVにだけ「車両不明」を追加
-  const header = "日時,乗用車,バス,トラック,バイク,自転車,確定小計,枠接触1回,車種不一致,不確定小計,車両合計,歩行者\n";
-  const rows = data.map(r => {
-  const car  = r.car ?? 0;
-  const bus  = r.bus ?? 0;
-  const truck= r.truck ?? 0;
-  const moto = r.motorcycle ?? 0;
-  const bici = r.bicycle ?? 0;
-  const person = r.person ?? 0;
+  let header = "";
+  let rows = "";
 
-  // Unknown（行に持ってるならそれ優先、なければ0）
-  const unkOne = (typeof r.unknown_one_touch === "number") ? r.unknown_one_touch : 0;
-  const unkMis = (typeof r.unknown_class_mismatch === "number") ? r.unknown_class_mismatch : 0;
+  if(countMode === "pedestrian"){
+    // 歩行者モード
+    header = "日時,歩行者\n"; 
+    
+    rows = data.map(r => {
+      const person = r.person ?? 0;
+      return `"${r.timestamp}",${person}`;
+    }).join("\r\n");
 
-  const confirmedSub = car + bus + truck + moto + bici;     // 確定小計
-  const unknownSub   = unkOne + unkMis;                     // 不確定小計
-  const vehicleTotal = confirmedSub + unknownSub;           // 車両合計
+  } else {
+    // 車両モード
+    header = "日時,乗用車,バス,トラック,バイク,自転車,合計\n";
+    
+    rows = data.map(r => {
+      const car   = r.car ?? 0;
+      const bus   = r.bus ?? 0;
+      const truck = r.truck ?? 0;
+      const moto  = r.motorcycle ?? 0;
+      const bici  = r.bicycle ?? 0;
 
-  return `"${r.timestamp}",${car},${bus},${truck},${moto},${bici},${confirmedSub},${unkOne},${unkMis},${unknownSub},${vehicleTotal},${person}`;
-}).join("\r\n");
+      // シンプルに合計
+      const total = car + bus + truck + moto + bici;
 
+      return `"${r.timestamp}",${car},${bus},${truck},${moto},${bici},${total}`;
+    }).join("\r\n");
+  }
 
   const csv = `\uFEFF${metadata}\n${header}${rows}`;
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -1766,7 +1739,7 @@ function formatTimestamp(d){
            
            // タップした瞬間だけメッセージを出す
            if(ev.type === "pointerdown"){
-             toast("測定中はROIを変更できません");
+             toast("測定中は測定枠を変更できません");
            }
         }
       }
@@ -1795,8 +1768,6 @@ function formatTimestamp(d){
     const SETTINGS_IDS = [
       "count-mode", // 測定対象（モード）
       "score-th",
-      "iou-th",
-      "min-hits",
       "max-lost",
       "max-fps",
       // 予約系も止めたいなら追加
@@ -1915,100 +1886,7 @@ function formatTimestamp(d){
     return _stop.apply(this, arguments);
   };
 })();
-/* =========================================
-   CSV出力：モード別ヘッダー/列 追加のみパッチ
-   - メタデータ: 画面UIの表記（単位付き）と並び順に完全一致させる
-   - 車両: 日時,5車種,確定小計,枠接触1回,車種不一致,不確定小計,車両合計
-   - 歩行者: 日時,歩行者,判定不能,合計
-   ========================================= */
-(function exportCsvByModePatch(){
-  // 既存の関数を上書き
-  exportCSV = async function(data, geo, unknown){
-    
-    if(!data || data.length === 0){
-      toast("出力するデータがありません", true);
-      return;
-    }
 
-    const endTime = new Date();
-    const noun = modeNoun();
-
-    // ▼▼▼ ヘルパー: プルダウンの「表示テキスト」を取得する関数 ▼▼▼
-    const getUiText = (el) => {
-      if(el && el.options && el.selectedIndex >= 0){
-        return el.options[el.selectedIndex].text;
-      }
-      return "";
-    };
-
-    // ▼▼▼ 修正箇所：メタデータを画面UIの表記・並び順に合わせる ▼▼▼
-    const metadata = [
-      `緯度: ${geo.lat}`,
-      `経度: ${geo.lng}`,
-      `期間: ${formatTimestamp(analysisStartTime || new Date())} - ${formatTimestamp(endTime)}`,
-      // 設定項目（画面の上から順、表記も画面通りにする）
-      `測定対象: ${getUiText(DOM.countModeSelect)}`,    // 例: 車両 / 歩行者
-      `スコアしきい値: ${getUiText(DOM.scoreTh)}`,      // 例: 50%
-      `検出FPS上限: ${getUiText(DOM.maxFps)}`,          // 例: 15fps
-      `確定必要フレーム: ${getUiText(DOM.minHits)}`,    // 例: 3frm
-      `IoUしきい値: ${getUiText(DOM.iouTh)}`,           // 例: 40%
-      `見失い許容量: ${getUiText(DOM.maxLost)}`,        // 例: 15frm
-    ].join("\n");
-    // ▲▲▲ 修正ここまで ▲▲▲
-
-    let header = "";
-    let rows = "";
-
-    if(countMode === "pedestrian"){
-      // 歩行者モード
-      header = "日時,歩行者,枠接触1回,合計\n";
-      
-      rows = data.map(r => {
-        const person = r.person ?? 0;
-        const oneTouch = (typeof r.unknown_one_touch === "number") ? r.unknown_one_touch : 0;
-        const total = person + oneTouch;
-        
-        return `"${r.timestamp}",${person},${oneTouch},${total}`;
-      }).join("\r\n");
-
-    } else {
-      // 車両モード
-      header = "日時,乗用車,バス,トラック,バイク,自転車,確定小計,枠接触1回,車種不一致,不確定小計,車両合計\n";
-      
-      rows = data.map(r => {
-        const car   = r.car ?? 0;
-        const bus   = r.bus ?? 0;
-        const truck = r.truck ?? 0;
-        const moto  = r.motorcycle ?? 0;
-        const bici  = r.bicycle ?? 0;
-
-        const unkOne = (typeof r.unknown_one_touch === "number") ? r.unknown_one_touch : 0;
-        const unkMis = (typeof r.unknown_class_mismatch === "number") ? r.unknown_class_mismatch : 0;
-
-        const confirmedSub = car + bus + truck + moto + bici; 
-        const unknownSub   = unkOne + unkMis;                 
-        const vehicleTotal = confirmedSub + unknownSub;       
-
-        return `"${r.timestamp}",${car},${bus},${truck},${moto},${bici},${confirmedSub},${unkOne},${unkMis},${unknownSub},${vehicleTotal}`;
-      }).join("\r\n");
-    }
-
-    const csv = `\uFEFF${metadata}\n${header}${rows}`;
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    const name = fileNameFromDate(analysisStartTime || new Date(), noun);
-    a.href = url;
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    toast(`CSVファイル（${noun}）「${name}」を出力しました`);
-  };
-})();
 /* =========================================
    クラッシュ対策＆リアルタイム更新パッチ (v5 完成版)
    - 修正1: 「計〇〇人」の表示をリアルタイムに更新（カードと同期）
@@ -2041,8 +1919,6 @@ function formatTimestamp(d){
         savedAt: Date.now(),
         countsCurrentHour,
         unknownTotal,
-        unknownOneTouch,
-        unknownClassMismatch,
         recordsHourly,
         analysisStartTime: analysisStartTime ? analysisStartTime.getTime() : null,
         hourWindowStart: hourWindowStart ? hourWindowStart.getTime() : null,
@@ -2064,8 +1940,6 @@ function formatTimestamp(d){
       // 変数に展開
       countsCurrentHour = data.countsCurrentHour || zeroCounts();
       unknownTotal = data.unknownTotal || 0;
-      unknownOneTouch = data.unknownOneTouch || 0;
-      unknownClassMismatch = data.unknownClassMismatch || 0;
       recordsHourly = data.recordsHourly || [];
       
       if (data.analysisStartTime) analysisStartTime = new Date(data.analysisStartTime);
@@ -2109,8 +1983,6 @@ function formatTimestamp(d){
       const savedData = {
         c: countsCurrentHour,
         ut: unknownTotal,
-        uo: unknownOneTouch,
-        uc: unknownClassMismatch,
         rh: recordsHourly,
         as: analysisStartTime,
         hw: hourWindowStart
@@ -2121,8 +1993,6 @@ function formatTimestamp(d){
       // 変数を書き戻す
       countsCurrentHour = savedData.c;
       unknownTotal = savedData.ut;
-      unknownOneTouch = savedData.uo;
-      unknownClassMismatch = savedData.uc;
       recordsHourly = savedData.rh;
       analysisStartTime = savedData.as;
       hourWindowStart = savedData.hw;
