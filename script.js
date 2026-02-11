@@ -7,6 +7,7 @@ const VEHICLE_CATS = ['car','bus','truck','motorcycle','bicycle'];
 
 // DOM
 const DOM = {
+  videoContainer: document.getElementById("video-container"),
   video: document.getElementById("video"),
   canvas: document.getElementById("canvas"),
   ctx: document.getElementById("canvas").getContext("2d"),
@@ -475,7 +476,7 @@ function getCanvasPoint(ev){
   const cw = DOM.canvas.width  || 1;
   const ch = DOM.canvas.height || 1;
 
-  const scale = Math.min(rect.width / cw, rect.height / ch);
+  const scale = Math.max(rect.width / cw, rect.height / ch);
 
   // contain で発生する余白（レターボックス）
   const contentW = cw * scale;
@@ -1220,20 +1221,36 @@ function adjustCanvasSize(){
   const h = DOM.video.videoHeight;
   if(!w || !h) return;
 
-  // 内部解像度は「実動画ピクセル」に合わせる
+  // 1. 内部解像度は常に動画の実サイズに合わせる
   DOM.canvas.width = w;
   DOM.canvas.height = h;
 
-  // 表示サイズは「実際に表示されているサイズ」を優先して拾う
-  // offsetWidth/Height が 0 になる環境対策
-  const rect = DOM.video.getBoundingClientRect();
-  const parentRect = DOM.canvas.parentElement?.getBoundingClientRect?.();
+  // 2. 画面サイズに応じた表示モードの切り替え
+  // PC画面（幅1024px以上）かどうかを判定
+  const isPC = window.matchMedia("(min-width: 1024px)").matches;
 
-  const cssW = rect.width  || DOM.video.offsetWidth  || parentRect?.width  || w;
-  const cssH = rect.height || DOM.video.offsetHeight || parentRect?.height || h;
+  if (isPC) {
+    // 【PCの場合】レイアウト重視（余白を埋める）
+    // 比率指定を解除し、CSSのグリッド枠いっぱいに広げる
+    if(DOM.videoContainer) DOM.videoContainer.style.aspectRatio = "";
+    
+    // 映像は「Cover（ズーム）」して、隙間なく埋め尽くす
+    DOM.video.style.objectFit = "cover";
+    DOM.canvas.style.objectFit = "cover";
+  } else {
+    // 【スマホの場合】映像の完全性重視（黒帯なし）
+    // 枠の比率を「カメラ映像の比率」に強制一致させる
+    if(DOM.videoContainer) DOM.videoContainer.style.aspectRatio = `${w} / ${h}`;
+    
+    // 枠と映像が同じ形になるので、containで綺麗に収まる
+    DOM.video.style.objectFit = "contain";
+    DOM.canvas.style.objectFit = "contain";
+  }
 
-  DOM.canvas.style.width  = `${cssW}px`;
-  DOM.canvas.style.height = `${cssH}px`;
+  // 3. Canvasの表示サイズを100%にする
+  // (getCanvasPointで計算補正するので、ここは100%でOK)
+  DOM.canvas.style.width = "100%";
+  DOM.canvas.style.height = "100%";
 }
 
 
@@ -1297,6 +1314,7 @@ function mainRenderLoop() {
 }
 
 // 枠描画専用の関数（整理のために分離）
+// 枠描画専用の関数（ID非表示 ＆ 残像表示版）
 function drawAllOverlays(ctx) {
   ctx.save();
   ctx.font = "14px Segoe UI, Arial";
@@ -1304,22 +1322,37 @@ function drawAllOverlays(ctx) {
   const color = { car:"#1e88e5", bus:"#43a047", truck:"#fb8c00", motorcycle:"#8e24aa", bicycle:"#fdd835", person:"#e53935" };
 
   for(const tr of tracker.tracks){
-    if(tr.lostAge > 0 || tr.state !== "confirmed") continue;
+    // ★修正A：確定していないものだけスキップ（見失ったものも表示する）
+    if(tr.state !== "confirmed") continue;
+
     const [x,y,w,h] = tr.bbox;
     const cls = tr.cls;
 
-    // モードに合わないものは描かない
     if(countMode === "vehicle" && cls === "person") continue;
     if(countMode === "pedestrian" && cls !== "person") continue;
 
-    ctx.strokeStyle = color[cls] || "#fff";
+    const c = color[cls] || "#fff";
+
+    // ★修正B：見失っている（画面端など）場合は半透明にする
+    if (tr.lostAge > 0) {
+      ctx.globalAlpha = 0.5;
+    } else {
+      ctx.globalAlpha = 1.0;
+    }
+
+    ctx.strokeStyle = c;
     ctx.strokeRect(x,y,w,h);
     
-    const label = `${cls} ${Math.floor(tr.score*100)}%`;
+    // ★修正C：ID（[#123]）を削除し、確信度だけにしました
+    const label = `${cls} ${Math.floor(tr.score*100)}%`; 
+
     ctx.fillStyle = "rgba(0,0,0,0.6)";
     ctx.fillRect(x, Math.max(0, y-18), ctx.measureText(label).width + 6, 18);
     ctx.fillStyle = "#fff";
     ctx.fillText(label, x+3, Math.max(10, y-4));
+    
+    // 透明度を戻す
+    ctx.globalAlpha = 1.0;
   }
   ctx.restore();
 }
