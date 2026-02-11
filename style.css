@@ -29,7 +29,7 @@ body{
 }
 #app-title{ font-size: 1.5rem; color: #2c3e50; margin: 0 0 0.4rem 0; }
 #status-indicator{
-  display: flex; align-items: center; gap: 8px; font-weight: bold;
+  display: flex; align-items: center; gap: 8px; font-weight: normal;
   color: #0056b3; min-width: 280px; transition: opacity 0.5s ease-out;
 }
 #status-indicator.hidden { opacity: 0; }
@@ -66,8 +66,19 @@ body{
   #settings-panel { grid-area: settings; }
 
   /* 設定パネル内の項目を縦1列に変更 */
-  #settings-panel .settings-grid {
+#settings-panel .settings-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* ▼▼▼ ここから追加：PCのときだけ高さを自動で伸ばす ▼▼▼ */
+  #info-panel {
+    height: 100%;      /* パネル自体の高さをグリッド枠に合わせる */
+    overflow: hidden;  /* はみ出し防止 */
+  }
+
+  #log-display {
+    height: auto;      /* スマホの「200px固定」を解除 */
+    flex: 1;           /* 残りのスペースを全部埋める */
   }
 }
 
@@ -84,14 +95,23 @@ body{
   border: 2px solid var(--border-color-default);
   border-radius: 8px; transition: border-color .3s ease;
 }
-#canvas.analyzing{ border-color: var(--border-color-analyzing); }
+#canvas.analyzing{
+  border-color: var(--border-color-analyzing);
+  border-width: 5px;                            /* 枠線を太くする */
+  box-shadow: 0 0 20px rgba(229, 57, 53, 0.6);  /* 赤く光るエフェクトを追加 */
+}
 
 /* リアルタイム統計 */
 #realtime-stats {
   background: var(--panel-bg); padding: 0.8rem; border-radius: 8px;
   box-shadow: var(--panel-shadow); border: 1px solid var(--border-light);
 }
-#realtime-stats h2{ margin: 0 0 0.6rem; font-size: 1rem; }
+#realtime-stats h2{ 
+  margin: 0 0 0.6rem; 
+  font-size: 1rem; 
+  border-bottom: 1px solid var(--border-light); /* ★追加：区切り線 */
+  padding-bottom: 0.4rem;                       /* ★追加：線と文字の間の余白 */
+}
 .counts{ display: grid; gap: 0.4rem; grid-template-columns: repeat(3, 1fr); }
 .count-item{
   background: #fafafa; border: 1px solid var(--border-light);
@@ -133,8 +153,9 @@ body{
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  border: 1px solid var(--border-light);
-  background: #f8f9fa;
+  border: 1px solid #ccc;
+
+  background: #f0f2f5;
   color: #555;
   font-weight: bold;
   font-size: 0.85rem;
@@ -187,17 +208,66 @@ input[type="number"], input[type="datetime-local"], select {
 }
 
 /* 情報・ログ */
-#info-panel { display: flex; flex-direction: column; }
-.geo{ display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.5rem; font-size: 0.8rem; }
+#info-panel { 
+  display: flex; 
+  flex-direction: column;
+  
+  /* ▼▼▼ 追加：高さ制限とスクロールの基点を作る ▼▼▼ */
+  height: 100%;       /* グリッドエリアの高さいっぱいに広げる */
+  min-height: 0;      /* Flexアイテムがコンテンツ以上に縮めるようにする（重要） */
+  overflow: hidden;   /* はみ出した分は隠す（スクロールは中の#log-displayでやる） */
+}
+
+/* ▼▼▼ 追加・修正：ログヘッダーの横並び設定 ▼▼▼ */
+.log-header {
+  display: flex;
+  align-items: baseline;        /* 文字のベースライン（下）を揃える */
+  justify-content: space-between; /* タイトルを左、緯度経度を右端へ */
+  flex-wrap: wrap;              /* 画面が狭いときは折り返す */
+  gap: 12px;                    /* タイトルと情報の間の隙間 */
+  
+  border-bottom: 1px solid var(--border-light); /* 線はここに移動 */
+  padding-bottom: 0.4rem;
+  margin-bottom: 0.6rem;
+}
+
+/* 既存のh3スタイルの上書き（線を消して余白をなくす） */
+.log-header h3 {
+  margin: 0;
+  border-bottom: none;
+  padding-bottom: 0;
+  /* フォントサイズは既存の 1rem (約15px) 太字 */
+}
+
+/* 緯度経度の見た目調整（タイトルと区別をつける） */
+.geo {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.75rem;       /* タイトルより小さく (約12px) */
+  color: #666;              /* 真っ黒ではなく少しグレーに */
+  font-weight: normal;      /* 細字にする */
+  margin: 0;                /* 余計な余白を削除 */
+}
+
+/* 数値部分だけ少し強調 */
+.geo strong {
+  color: #333;              /* 数値は濃い黒で */
+  font-weight: 600;
+  margin-left: 2px;
+}
 #log-display{
-  height: 115px;
-  overflow-y: auto;
+  height: 150px;      /* ★スマホでは150pxに固定する */
+  overflow-y: auto;   /* 200pxを超えたらスクロール */
+  
   border: 1px solid var(--border-light);
   border-radius: 4px;
+  
+  /* flexの設定はここでは書かない（PC用で書く） */
 }
 #log-table{ width: 100%; border-collapse: collapse; font-size: 0.8rem; }
 #log-table th{
   position: sticky; top: 0; background: #f7f7f7; z-index: 1; padding: 5px; border-bottom: 1px solid var(--border-light);
+font-weight: normal;
 }
 #log-table td{ border-bottom: 1px solid var(--border-light); padding: 4px; text-align: center; }
 
@@ -219,4 +289,98 @@ input[type="number"], input[type="datetime-local"], select {
 @media (pointer: coarse) and (orientation: landscape) {
   #video-container { aspect-ratio: 16 / 9; }  /* 横向き → 横長 */
 }
-/* ======= ここまで ======= */
+
+/* =========================================
+   スマホ・モバイル表示最適化（最終調整版）
+   ========================================= */
+@media (max-width: 600px) {
+
+  /* 1. タイトル: 文字サイズを小さくして改行を防止 */
+  #app-title {
+    font-size: 1.1rem !important; /* 24px → 17px程度に縮小 */
+    white-space: nowrap;          /* 改行禁止 */
+    overflow: hidden;             /* はみ出し防止 */
+    text-overflow: ellipsis;
+    margin-bottom: 0.2rem;
+    width: 100%;
+    justify-content: center;
+  }
+  
+  /* 2. モデル読み込み中: 文字サイズ縮小、2行化防止 */
+  #status-indicator {
+    font-size: 0.8rem !important; /* 文字を小さく */
+    flex-wrap: nowrap !important; /* 絶対に折り返さない */
+  }
+  #loading-progress {
+    width: 100px !important;      /* スマホでは100px固定 */
+  }
+
+  /* 3. カウントカード: 「トラック：0台」を1行に収める */
+  .count-item {
+    font-size: 0.7rem !important;  /* 極小サイズ */
+    white-space: nowrap !important; /* 改行禁止 */
+    text-align: center;
+    display: flex;
+    align-items: center;
+  }
+  
+  /* 4. 見出し統一（〇時台、ログ、設定）: サイズ統一＆改行防止 */
+  #current-hour-title,
+  .panel h3,
+  .log-header h3,
+  #settings-panel h3 {
+    font-size: 0.9rem !important; /* 統一サイズ */
+    white-space: nowrap !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+  }
+
+  /* 5. インフォボタン(i)のサイズ統一 */
+  #app-title .title-info-btn,
+  #settings-panel .info-btn,
+  .setting-info-btn {
+    width: 20px !important;
+    height: 20px !important;
+    font-size: 0.7rem !important;
+    line-height: 1 !important;
+  }
+  
+  /* 6. 入力欄のグレー解除 (iOS対策) */
+  input, select {
+    appearance: none;           /* デフォルトスタイル解除 */
+    -webkit-appearance: none;   /* iOS Safari用 */
+    background-color: #ffffff !important;
+    color: #333333 !important;
+    opacity: 1 !important;      /* 透明度を強制解除 */
+    border: 1px solid #ccc;
+  }
+
+  /* 7. 予約入力（日時）: 横並び重なり防止 & プレースホルダー表示 */
+  .schedule-inputs {
+    display: flex;
+    flex-direction: row !important; /* 横並び強制 */
+    gap: 2px !important;            /* 隙間を極限まで詰める */
+  }
+  
+  .schedule-inputs label {
+    flex: 1;             /* 幅を等分 */
+    min-width: 0;        /* 親枠からはみ出さないようにする（重要） */
+    font-size: 0.8rem !important;
+    overflow: hidden;
+  }
+
+  input[type="datetime-local"] {
+    width: 100% !important;
+    padding: 0 !important;         /* 余白なし */
+    height: 34px;                  /* タップしやすい高さは確保 */
+    letter-spacing: -0.5px;        /* 文字間を詰める */
+  }
+}
+
+/* --- 8. 測定ログの表ヘッダー：文字サイズ縮小 & 余白詰め --- */
+  #log-table th {
+    font-size: 0.7rem !important;   /* 文字サイズを小さく (約10.5px) */
+    padding: 4px 1px !important;    /* 左右の余白を詰めて、文字が入りきるようにする */
+    white-space: nowrap !important; /* 勝手に改行されないようにする */
+  }
