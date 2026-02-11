@@ -1856,13 +1856,13 @@ stopAnalysis = function(){
   let isResumed = false; // 復旧モード待機フラグ
   let backupInterval = null;
 
-  // --- 1. UIのリアルタイム同期（ここが「合計が増えない」の修正） ---
-  // 元の updateCountUI（カード更新）をフックし、同時に updateHourTitle（合計更新）も呼ぶ
+  // --- 1. UIのリアルタイム同期 ---
   const _updateCountUI = updateCountUI;
   updateCountUI = function() {
     _updateCountUI.apply(this, arguments);
     try {
       updateHourTitle(); // カードが変わるたびに上のタイトルも更新
+      saveBackup();      // ★ここに追加！カウントが増えたら即座にバックアップ
     } catch(e) {}
   };
 
@@ -2000,8 +2000,9 @@ stopAnalysis = function(){
   // --- 7. バックアップ間隔制御 ---
   function startBackupLoop() {
     if (backupInterval) clearInterval(backupInterval);
-    backupInterval = setInterval(saveBackup, 1000);
+    backupInterval = setInterval(saveBackup, 60000); // ここは60000でOK
   }
+
   function stopBackupLoop() {
     if (backupInterval) { clearInterval(backupInterval); backupInterval = null; }
   }
