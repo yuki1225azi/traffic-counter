@@ -1,5 +1,5 @@
 /* =========================
-   スマート交通量カウンター (UI改善版v15)
+   スマート交通量カウンター
    ========================= */
 
 const UI_CATS = ['car','bus','truck','motorcycle','bicycle','person'];
@@ -395,12 +395,6 @@ function removeSettingsInfoMark(){
   try{ document.getElementById("settings-info-btn")?.remove(); }catch(_e){}
 }
 
-// 先にUI上の不要ボタンを消し、タイトル説明を追加（ちらつき防止）
-removeSettingsInfoMark();
-setupTitleDescription();
-injectModeInactiveStyle();
-
-
 let model = null;
 let isAnalyzing = false;
 let rafId = null;
@@ -415,7 +409,6 @@ const zeroCounts = () => ({
   car: 0, bus: 0, truck: 0, motorcycle: 0, bicycle: 0, person: 0
 });
 let countsCurrentHour = zeroCounts();
-let unknownTotal = 0; // ※バックアップ機能の互換性のために変数自体は0で残しておくのが安全です
 
 let recordsHourly = [];
 let autoSaveTimer = null;
@@ -446,34 +439,30 @@ let countMode  = normalizeMode(localStorage.getItem(LS_KEY_MODE)  || "vehicle");
 // ロジックはROI境界2回に固定
 const countLogic = "roi";
 
-/* ========= ROI（内部保持） =========
-   - 現時点ではUIを変えないため、ROIは「全画面」が初期値
-   - 今後、手入力UI/回転ROIは③で対応予定
-*/
-let ROI_NORM = { x: 0.2, y: 0.2, w: 0.6, h: 0.6 };
+/* ========= ROI（内部保持） ========= */
+// 4つの頂点を [左上, 右上, 右下, 左下] の順で保持する
+let ROI_NORM = [
+  {x: 0.35, y: 0.3}, {x: 0.65, y: 0.3}, 
+  {x: 0.65, y: 0.7}, {x: 0.35, y: 0.7}
+];
 let roiLocked = false; // trueの間はROI操作を無効化（測定中に固定）
 // 保存済みROIがあれば復元（UIは変えず内部設定のみ）
 try{
   const saved = localStorage.getItem(LS_KEY_ROI);
   if(saved){
     const obj = JSON.parse(saved);
-    if(obj && isFinite(obj.x) && isFinite(obj.y) && isFinite(obj.w) && isFinite(obj.h)){
-      ROI_NORM = { x: obj.x, y: obj.y, w: obj.w, h: obj.h };
+    // ★4つの有効な座標を持つ「配列」であるかを確認する
+    if(Array.isArray(obj) && obj.length === 4 && obj.every(p => isFinite(p.x) && isFinite(p.y))){
+      ROI_NORM = obj;
     }
   }
 }catch(_e){}
+
 function getRoiPx(){
   const W = DOM.canvas.width || 1;
   const H = DOM.canvas.height || 1;
-  return {
-    x: ROI_NORM.x * W,
-    y: ROI_NORM.y * H,
-    w: ROI_NORM.w * W,
-    h: ROI_NORM.h * H
-  };
-}
-function pointInRect(px, py, r){
-  return (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h);
+  // 4点すべての正規化座標をピクセル座標に変換して配列で返す
+  return ROI_NORM.map(p => ({ x: p.x * W, y: p.y * H }));
 }
 
 // キャンバス座標 ↔ ROI正規化のユーティリティ
@@ -509,132 +498,85 @@ function getCanvasPoint(ev){
   };
 }
 
-
-function setRoiFromPx(x1,y1,x2,y2){
-  const W = DOM.canvas.width  || 1;
-  const H = DOM.canvas.height || 1;
-  const left   = clamp(Math.min(x1,x2), 0, W);
-  const right  = clamp(Math.max(x1,x2), 0, W);
-  const top    = clamp(Math.min(y1,y2), 0, H);
-  const bottom = clamp(Math.max(y1,y2), 0, H);
-
-  const w = Math.max(1, right - left);
-  const h = Math.max(1, bottom - top);
-
-  ROI_NORM = {
-    x: left / W,
-    y: top  / H,
-    w: w    / W,
-    h: h    / H
-  };
-}
-
 function saveRoi(){
   try{ localStorage.setItem(LS_KEY_ROI, JSON.stringify(ROI_NORM)); }catch(_e){}
 }
 
-/* ========= ROI操作（角を中心に円形の当たり判定 ＆ スクロール制御） ========= */
+/* ========= ROI操作 ========= */
 function setupRoiDrag(){
   const c = DOM.canvas;
   if(!c) return;
 
-  // 初期状態ではブラウザのスクロールを許可
-  c.style.touchAction = "auto";
-
   let dragging = false;
-  let anchor = null; 
+  let dragIndex = -1; // 掴んでいる頂点の番号 (0〜3)
 
-  // 当たり判定の「半径」を計算（デバイスごとに最適化）
   const getHitRadius = () => {
     const rect = c.getBoundingClientRect();
     if (!rect.width) return 40;
-    const scaleX = c.width / rect.width;
-    // スマホ(Touch)なら広め(50px相当)、PCなら標準的(30px相当)に設定
-    const isTouch = window.matchMedia("(pointer: coarse)").matches;
-    return (isTouch ? 50 : 30) * scaleX;
+    
+    // 指の太さ（約44px）を基準に、画面サイズに合わせて自動計算する
+    const displayToInternalScale = c.width / rect.width;
+    return 44 * displayToInternalScale; 
   };
 
-  const getDist = (p1, p2) => Math.sqrt((p1.x-p2.x)**2 + (p1.y-p2.y)**2);
-
   const startDrag = (ev)=>{
-    // 測定中、またはロック中は操作させない
     if(isAnalyzing || window.roiLocked === true) return;
     
-    // ★改良点1：座標計算の前にまずスクロールをロックする
-    c.style.touchAction = "none";
+    // 【ラグ解消】触れた瞬間に即ロック
+    c.style.touchAction = "none"; 
 
     const p = getCanvasPoint(ev);
-    const r = getRoiPx();
+    const pts = getRoiPx();
     const HIT_RADIUS = getHitRadius();
 
-    // 四隅の定義
-    const corners = [
-      { id: "tl", x: r.x,       y: r.y,       opp: {x: r.x+r.w, y: r.y+r.h} },
-      { id: "tr", x: r.x+r.w,   y: r.y,       opp: {x: r.x,     y: r.y+r.h} },
-      { id: "br", x: r.x+r.w,   y: r.y+r.h,   opp: {x: r.x,     y: r.y}     },
-      { id: "bl", x: r.x,       y: r.y+r.h,   opp: {x: r.x+r.w, y: r.y}     }
-    ];
+    // どの頂点に近いか判定
+    dragIndex = pts.findIndex(pt => {
+      return Math.sqrt((p.x - pt.x)**2 + (p.y - pt.y)**2) < HIT_RADIUS;
+    });
 
-    let hitCorner = null;
-    let minD = HIT_RADIUS; 
-    
-    // 円形の当たり判定
-    for(const corner of corners){
-      const d = Math.sqrt((p.x-corner.x)**2 + (p.y-corner.y)**2);
-      if(d < minD){ 
-        minD = d;
-        hitCorner = corner;
-      }
-    }
-
-    if(hitCorner){
+    if(dragIndex !== -1){
       dragging = true;
-      anchor = hitCorner.opp;
-      
-      // ★改良点2：すでに none になっているのでここではクラス追加のみ
       c.classList.add("roi-active"); 
-      
       try{ c.setPointerCapture(ev.pointerId); }catch(_e){}
-      
       ev.preventDefault();
       ev.stopPropagation();
     } else {
-      // ★改良点3：ハンドルに当たっていなければ、スクロール許可に戻す
       c.style.touchAction = "auto";
     }
   };
 
-const moveDrag = (ev)=>{
-    if(!dragging || !anchor) return;
+  const moveDrag = (ev)=>{
+    if(!dragging || dragIndex === -1) return;
     const p = getCanvasPoint(ev);
-    setRoiFromPx(anchor.x, anchor.y, p.x, p.y);
-    // 描画更新はメインループが自動で行うので、ここでは何もしなくてOK
-    ev.preventDefault(); 
+    const W = c.width || 1;
+    const H = c.height || 1;
+
+    // 掴んでいる点だけを更新（0.0〜1.0の範囲内に制限）
+    ROI_NORM[dragIndex] = {
+      x: Math.max(0, Math.min(1, p.x / W)),
+      y: Math.max(0, Math.min(1, p.y / H))
+    };
+    ev.preventDefault();
   };
 
   const endDrag = (ev)=>{
     if(!dragging) return;
     dragging = false;
-    anchor = null;
+    dragIndex = -1;
 
-    // タッチデバイス（スマホ・タブレット）かどうかを判定
     const isTouch = window.matchMedia("(pointer: coarse)").matches;
-
     if (isTouch) {
-      // --- スマホの場合：1秒間「オレンジ維持 ＋ スクロール禁止」を継続 ---
+      // 【1秒ガード】スマホの場合は1秒間オレンジ色とスクロール禁止を維持
       setTimeout(() => {
-        // 1秒経つ前に次のドラッグが始まっていなければ、通常状態に戻す
         if (!dragging) {
-          c.style.touchAction = "auto";      // スクロール許可
-          c.classList.remove("roi-active"); // 白線に戻す
+          c.style.touchAction = "auto";
+          c.classList.remove("roi-active");
         }
       }, 1000);
     } else {
-      // --- パソコンの場合：即座に「白線 ＋ スクロール許可」に戻す ---
       c.style.touchAction = "auto";
       c.classList.remove("roi-active");
     }
-
     saveRoi();
   };
 
@@ -646,78 +588,76 @@ const moveDrag = (ev)=>{
 
 /* ========= ROI描画（枠の変化：オレンジ実線＋太線） ========= */
 function drawRoi(ctx){
-  const r = getRoiPx();
-  if(r.w <= 0 || r.h <= 0) return;
+  const pts = getRoiPx(); // ★新：4点の配列
+  if(pts.length < 4) return;
 
   const isActive = DOM.canvas.classList.contains("roi-active");
-  // 操作中はオレンジの実線、待機中は白の破線
   const mainColor = isActive ? "#ff9800" : "#ffffff"; 
 
   ctx.save();
+  // ★新：パスを結んで四角形を塗る
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for(let i=1; i<4; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
 
-  // 1. 枠内の塗りつぶし（操作中は少しだけ色を濃くして「選択中」を明示）
   ctx.fillStyle = isActive ? "rgba(255, 152, 0, 0.2)" : "rgba(255, 255, 255, 0.15)";
-  ctx.fillRect(r.x, r.y, r.w, r.h);
+  ctx.fill();
 
-  // 2. メインの枠線
-  ctx.lineWidth = isActive ? 4 : 2; // 操作中は少し太く
-  ctx.strokeStyle = "rgba(0, 0, 0, 0.6)"; // 下地（視認性確保）
-  ctx.setLineDash([]);
-  ctx.strokeRect(r.x, r.y, r.w, r.h);
-  
+  // ★新：枠線を描画
+  ctx.lineWidth = isActive ? 4 : 2;
   ctx.strokeStyle = mainColor;
-  // 操作中は位置を正確に把握するため、破線ではなく実線にする
   if (!isActive) ctx.setLineDash([5, 5]); 
-  ctx.strokeRect(r.x, r.y, r.w, r.h);
+  ctx.stroke();
 
-  // 3. 四隅のハンドル（L字マーク）
-  const arm = Math.max(40, Math.min(r.w, r.h) * 0.2);
-  const corners = [
-    [ [r.x, r.y+arm], [r.x, r.y], [r.x+arm, r.y] ],
-    [ [r.x+r.w-arm, r.y], [r.x+r.w, r.y], [r.x+r.w, r.y+arm] ],
-    [ [r.x+r.w, r.y+r.h-arm], [r.x+r.w, r.y+r.h], [r.x+r.w-arm, r.y+r.h] ],
-    [ [r.x, r.y+r.h-arm], [r.x, r.y+r.h], [r.x+arm, r.y+r.h] ]
-  ];
-
+  // ★改良：どんな背景でも見やすい「二重円」デザインに変更
   ctx.setLineDash([]);
-  ctx.lineCap = "round";
-  
-  // 外側の縁取り
-  ctx.lineWidth = isActive ? 10 : 8;
-  ctx.strokeStyle = "rgba(0, 0, 0, 0.8)";
-  corners.forEach(p => {
-    ctx.beginPath(); ctx.moveTo(p[0][0], p[0][1]);
-    ctx.lineTo(p[1][0], p[1][1]); ctx.lineTo(p[2][0], p[2][1]); ctx.stroke();
-  });
+  pts.forEach(pt => {
+    // 1. 外側の影（黒の半透明）
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, 12, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(0,0,0,0.3)";
+    ctx.fill();
 
-  // 内側のメインカラー
-  ctx.lineWidth = isActive ? 6 : 4;
-  ctx.strokeStyle = mainColor;
-  corners.forEach(p => {
-    ctx.beginPath(); ctx.moveTo(p[0][0], p[0][1]);
-    ctx.lineTo(p[1][0], p[1][1]); ctx.lineTo(p[2][0], p[2][1]); ctx.stroke();
-  });
+    // 2. メインの円（オレンジまたは白）
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, 10, 0, Math.PI * 2);
+    ctx.fillStyle = mainColor;
+    ctx.fill();
 
-  ctx.restore();
+    // 3. 内側の中心点（白）
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, 5, 0, Math.PI * 2);
+    ctx.fillStyle = "#ffffff";
+    ctx.fill();
+    
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  });
+}
+
+/* --- 追加：点 p が多角形 polygon 内にあるか判定 (交差数法) --- */
+function isPointInPolygon(p, polygon) {
+  let isInside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x, yi = polygon[i].y;
+    const xj = polygon[j].x, yj = polygon[j].y;
+    // 点pから水平に引いた線が辺と交差するか判定
+    const intersect = ((yi > p.y) !== (yj > p.y)) &&
+                      (p.x < (xj - xi) * (p.y - yi) / (yj - yi) + xi);
+    if (intersect) isInside = !isInside;
+  }
+  return isInside;
 }
 
 /* ========= 幾何計算ヘルパー（ワープ判定用） ========= */
-// 線分(p1-p2)と矩形(rect)が交差するか判定
-function isLineIntersectingRect(p1, p2, rect) {
-  // AABBチェック（簡易判定：範囲外なら即false）
-  let minX = Math.min(p1.x, p2.x), maxX = Math.max(p1.x, p2.x);
-  let minY = Math.min(p1.y, p2.y), maxY = Math.max(p1.y, p2.y);
-  if (maxX < rect.x || minX > rect.x + rect.w || maxY < rect.y || minY > rect.y + rect.h) return false;
-
-  // 矩形の4辺との交差判定
-  const segments = [
-    [{x:rect.x, y:rect.y}, {x:rect.x+rect.w, y:rect.y}], // Top
-    [{x:rect.x+rect.w, y:rect.y}, {x:rect.x+rect.w, y:rect.y+rect.h}], // Right
-    [{x:rect.x+rect.w, y:rect.y+rect.h}, {x:rect.x, y:rect.y+rect.h}], // Bottom
-    [{x:rect.x, y:rect.y+rect.h}, {x:rect.x, y:rect.y}] // Left
-  ];
-  for(let s of segments) {
-    if (getLineIntersection(p1, p2, s[0], s[1])) return true;
+// 線分(p1-p2)と多角形(polygon)の辺が交差するか判定
+function isLineIntersectingPolygon(p1, p2, polygon) {
+  for (let i = 0; i < polygon.length; i++) {
+    const s1 = polygon[i];
+    const s2 = polygon[(i + 1) % polygon.length]; // 0-1, 1-2, 2-3, 3-0 の順で辺を作る
+    if (getLineIntersection(p1, p2, s1, s2)) return true;
   }
   return false;
 }
@@ -922,66 +862,41 @@ function applyCountByMode(cls){
 
 function updateRoiCountingForConfirmedTracks(){
   const r = getRoiPx(); 
-  
-  // ★判定ロジック: 画面の「判定中心幅」の設定値を反映
   const centerWidth = DOM.hitArea ? Number(DOM.hitArea.value) : 0.0;
 
   for(const tr of tracker.tracks){
-    // 確定していない、または既にカウント済みのトラックは無視
     if(tr.state !== "confirmed" || tr.counted) continue;
-    
-    // ロスト中のトラックは、ここでは更新せず onRemoved で回収する
     if(tr.lostAge > 0) continue;
 
-const c = tr.center();
+    const c = tr.center();
     const prev = tr.prevCenter;
 
-    // ★追加: 動いているかチェック（駐車車両・看板対策）
-    // 前回の位置(prev)と比べて、ほとんど動いていなければ「停止中」とみなす
+    // 動いているかチェック
     let isMoving = true;
     if(prev){
-       // 移動距離を計算（三平方の定理）
        const dist = Math.sqrt((c.x - prev.x)**2 + (c.y - prev.y)**2);
-       // 2ピクセル未満の移動なら「止まっている」と判断
        if(dist < 2.0) isMoving = false; 
     }
 
-    // 1. ROI内判定
-    const inRoi = (
-  c.x >= r.x - centerWidth && 
-  c.x <= r.x + r.w + centerWidth && 
-  c.y >= r.y - centerWidth && 
-  c.y <= r.y + r.h + centerWidth
-);
+    // 判定中心幅のロジックを適用
+    // 枠内判定（inRoi）
+    let inRoi = isPointInPolygon(c, r);
     
-    // ★追加: 枠内にいても、止まっていたら「枠内にいない」ことにする
-    if(inRoi && !isMoving){
-        // 何もしない（次のループへ）
-        continue;
-    }
+    // 設定が「100%(0.0)」以外なら、枠の境界線から一定距離内側に入ったか厳密にチェックする準備
+    // 現状は中心点が枠に入ればカウント候補とする
+    if(inRoi && !isMoving) continue;
 
-    // 2. ワープ（線分交差）判定
-    // ROI外かつ、前回の位置が記録されていればチェック
     let isWarp = false;
     if(!inRoi && prev){
-      // ステップ2で追加した関数を使用
-      isWarp = isLineIntersectingRect(prev, c, r);
+      isWarp = isLineIntersectingPolygon(prev, c, r);
     }
 
     if(inRoi || isWarp){
-      // --- 滞在中または通過中 ---
-      
-      // ワープ時は強制的に「ROI内」として1票入れる
-      // （ハイブリッド判定の「本命スコア」を増やすため）
       tr.voteRoi(tr.cls, tr.score); 
-      
       if(isWarp) tr.warpDetected = true;
-      tr.consecutiveOutsideRoi = 0; // 連続退出カウントをリセット
+      tr.consecutiveOutsideRoi = 0;
     } else {
-      // --- ROI外 ---
       tr.consecutiveOutsideRoi++;
-
-      // 連続2フレーム外 ＆ (過去に滞在実績あり OR ワープ通過) ＆ 未カウントなら「退出」とみなす
       if(tr.consecutiveOutsideRoi >= 2){
          if(tr.totalFramesInRoi >= 2 || tr.warpDetected){
             const winner = tr.getWinnerClass();
@@ -1023,9 +938,11 @@ window.addEventListener("load", init);
 
 async function init(){
   try{
+    removeSettingsInfoMark();    // 設定横の「i」を消す
+    setupTitleDescription();     // タイトル横に「利用ガイド」を出す
+    injectModeInactiveStyle();   // 非アクティブ項目の色設定
+
     applyModeUiState();
-    //setupCountSummaryUI();
-    //updateCountSummaryUI();
     setupSettingItemHelpPopups();
     progressFake(5);
     await tf.ready();
@@ -1047,7 +964,7 @@ async function init(){
     setupTracker();
     updateHourTitle();
     updateLogTableVisibility();
-    drawVideoToCanvas();
+    mainRenderLoop();
 
     DOM.toggleBtn.disabled = false;
 }catch(err){
@@ -1140,7 +1057,6 @@ function startAnalysis(){
   setupTracker();
  
   countsCurrentHour = zeroCounts();
-  unknownTotal = 0;
   recordsHourly = [];
 
   analysisStartTime = new Date();
@@ -1154,8 +1070,6 @@ function startAnalysis(){
 
   lastInferTime = 0;
   frameIndex = 0;
-
-  detectLoop();
 }
 
 function stopAnalysis(){
@@ -1163,7 +1077,6 @@ function stopAnalysis(){
   DOM.toggleBtn.classList.replace("btn-red", "btn-green");
   DOM.canvas.classList.remove("analyzing");
 
-  cancelAnimationFrame(rafId);
   stopAutoSaveHourly();
 
   if(recordsHourly.length > 0){
@@ -1171,12 +1084,11 @@ function stopAnalysis(){
   }
 
   countsCurrentHour = zeroCounts();
-  unknownTotal = 0;
   recordsHourly = [];
 
   updateCountUI();
   updateLogDisplay(true);
-  drawVideoToCanvas();
+  mainRenderLoop();
 }
 
 /* ========= 測定予約 ========= */
@@ -1297,111 +1209,73 @@ function setupTracker(){
   });
 }
 
-/* ========= メイン検出ループ ========= */
-function detectLoop(){
-  if(!isAnalyzing) return;
-
-  const interval = 1000 / Number(DOM.maxFps.value);
-  const now = performance.now();
-  if(now - lastInferTime < interval){
-    rafId = requestAnimationFrame(detectLoop);
-    return;
-  }
-  lastInferTime = now;
-  frameIndex++;
-
-  model.detect(DOM.video).then(preds=>{
-    const scoreTh = Number(DOM.scoreTh.value);
-
-    // 1) UI対象のクラスだけに落とす
-    const raw = [];
-    for(const p of preds){
-      if(!UI_CATS.includes(p.class)) continue;
-      if(p.score < scoreTh) continue;
-      raw.push({ bbox: p.bbox, score: p.score, cls: p.class });
-    }
-
-    // 2) ①モードでフィルタ（車内person除外 / person特化）
-    const dets = filterDetectionsByMode(raw);
-
-    // 3) 追跡更新
-    tracker.updateWithDetections(dets);
-
-    // 4) ②ROIロジック（confirmedの境界接触を処理）
-    updateRoiCountingForConfirmedTracks();
-
-    // 5) 描画
-    drawAll();
-
-    // 6) ログ
-    pushHourlySnapshotIfNeeded();
-
-    rafId = requestAnimationFrame(detectLoop);
-  }).catch(err=>{
-    console.error(err);
-    rafId = requestAnimationFrame(detectLoop);
-  });
-}
-
-/* ========= 描画 ========= */
-function drawVideoToCanvas(){
-  if(DOM.video.videoWidth){
-    adjustCanvasSize();
-    DOM.ctx.drawImage(DOM.video, 0, 0, DOM.canvas.width, DOM.canvas.height);
-    // 開始前でもROI枠を見えるように描画
-    drawRoi(DOM.ctx);
-  }
-  if(!isAnalyzing) requestAnimationFrame(drawVideoToCanvas);
-}
-
-function drawAll(){
-  // 修正: DOM.drawMode の取得を廃止し、常に「全表示」として振る舞う
+/* ========= 統合メインループ（修正後） ========= */
+function mainRenderLoop() {
   const ctx = DOM.ctx;
 
-  ctx.drawImage(DOM.video, 0, 0, DOM.canvas.width, DOM.canvas.height);
+  // 1. 共通：映像をキャンバスに描く（常に実行）
+  if (DOM.video.videoWidth) {
+    // 画面サイズを自動調整
+    adjustCanvasSize(); 
+    ctx.drawImage(DOM.video, 0, 0, DOM.canvas.width, DOM.canvas.height);
+  }
 
-  // ROI枠（ロジックがROIのときだけ表示）
+  // 2. 測定中だけ実行する処理
+  if (isAnalyzing) {
+    const interval = 1000 / Number(DOM.maxFps.value);
+    const now = performance.now();
+
+    // 解析頻度（FPS）に合わせてAIを動かす
+    if (now - lastInferTime >= interval) {
+      lastInferTime = now;
+      model.detect(DOM.video).then(preds => {
+        const scoreTh = Number(DOM.scoreTh.value);
+        // 設定した感度以上のものだけ抽出
+        const raw = preds.filter(p => UI_CATS.includes(p.class) && p.score >= scoreTh)
+                         .map(p => ({ bbox: p.bbox, score: p.score, cls: p.class }));
+        
+        const dets = filterDetectionsByMode(raw);
+        tracker.updateWithDetections(dets);
+        updateRoiCountingForConfirmedTracks(); // ROI内判定
+        pushHourlySnapshotIfNeeded();          // ログ保存
+      });
+    }
+    // AIの枠（四角）を描画
+    drawAllOverlays(ctx); 
+  }
+
+  // 3. 測定エリア（白い枠）を常に一番上に描く
   drawRoi(ctx);
 
-  // 修正: if(mode === "off") return; を削除（常に描画するため）
+  // 次のコマを予約してループさせる
+  requestAnimationFrame(mainRenderLoop);
+}
 
+// 枠描画専用の関数（整理のために分離）
+function drawAllOverlays(ctx) {
   ctx.save();
   ctx.font = "14px Segoe UI, Arial";
   ctx.lineWidth = 2;
-
-  const color = {
-    car: "#1e88e5",
-    bus: "#43a047",
-    truck: "#fb8c00",
-    motorcycle: "#8e24aa",
-    bicycle: "#fdd835",
-    person: "#e53935",
-  };
+  const color = { car:"#1e88e5", bus:"#43a047", truck:"#fb8c00", motorcycle:"#8e24aa", bicycle:"#fdd835", person:"#e53935" };
 
   for(const tr of tracker.tracks){
-    if(tr.lostAge > 0) continue;
-    // 「確定必要フレーム」に達したものだけ枠を表示（＝表示と計測を同期）
-    if(tr.state !== "confirmed") continue;
-
+    if(tr.lostAge > 0 || tr.state !== "confirmed") continue;
     const [x,y,w,h] = tr.bbox;
     const cls = tr.cls;
 
-    // モードに応じて描画対象を絞る
-    if(countMode === "vehicle" && cls === "person") continue; // 車両モードは人を描画しない
-    if(countMode === "pedestrian" && cls !== "person") continue; // 歩行者モードは人以外を描画しない
+    // モードに合わないものは描かない
+    if(countMode === "vehicle" && cls === "person") continue;
+    if(countMode === "pedestrian" && cls !== "person") continue;
 
-    ctx.strokeStyle = color[cls] || "#ffffff";
+    ctx.strokeStyle = color[cls] || "#fff";
     ctx.strokeRect(x,y,w,h);
-
-    // 修正: if(mode === "all"){ ... } の条件分岐を外し、中身を常に実行する
-    const label = `${cls} ${Math.floor(tr.score*100)} [#${tr.id}]`;
-    const tw = ctx.measureText(label).width + 6;
+    
+    const label = `${cls} ${Math.floor(tr.score*100)}% [#${tr.id}]`;
     ctx.fillStyle = "rgba(0,0,0,0.6)";
-    ctx.fillRect(x, Math.max(0, y-18), tw, 18);
+    ctx.fillRect(x, Math.max(0, y-18), ctx.measureText(label).width + 6, 18);
     ctx.fillStyle = "#fff";
     ctx.fillText(label, x+3, Math.max(10, y-4));
   }
-
   ctx.restore();
 }
 
@@ -1432,15 +1306,10 @@ function startAutoSaveHourly(){
 
       const snapshotA = { ...countsCurrentHour };
       const rowA = {
-        timestamp: formatTimestamp(endTime), // xx:59:59
+        timestamp: formatTimestamp(endTime),
         ...snapshotA,
-        unknown_total: unknownTotal,
-        unknown_one_touch: 0,
-        unknown_class_mismatch: 0,
         total_counted_mode: getCountedTotalByMode(snapshotA),
-        total_all: getCountedTotalByMode(snapshotA) + unknownTotal
       };
-
       recordsHourly.push(rowA);
 
       // ファイルA（前の1時間分）を出力
@@ -1454,7 +1323,6 @@ function startAutoSaveHourly(){
       // カウントをリセット
       recordsHourly = [];
       countsCurrentHour = zeroCounts();
-      unknownTotal = 0;
 
       // 新しい時間の開始時刻（xx:00:00）
       // nextHour変数をそのまま使うとズレがない
@@ -1468,11 +1336,7 @@ function startAutoSaveHourly(){
       const rowB = {
         timestamp: formatTimestamp(startTime), // xx:00:00
         ...snapshotB,
-        unknown_total: 0,
-        unknown_one_touch: 0,
-        unknown_class_mismatch: 0,
-        total_counted_mode: 0,
-        total_all: 0
+        total_counted_mode: 0
       };
       recordsHourly.push(rowB);
 
@@ -1509,11 +1373,7 @@ const snapshot = { ...countsCurrentHour };
 const row = {
   timestamp: formatTimestamp(new Date(t)),
   ...snapshot,
-  unknown_total: unknownTotal,
-  unknown_one_touch: 0,
-  unknown_class_mismatch: 0,
   total_counted_mode: getCountedTotalByMode(snapshot),
-  total_all: getCountedTotalByMode(snapshot) + unknownTotal
 };
   recordsHourly.push(row);
   updateLogDisplay();
@@ -1735,8 +1595,6 @@ function formatTimestamp(d){
 const _startAnalysis = startAnalysis;
 startAnalysis = function(){
   window.roiLocked = true;
-  // ★追加：測定が始まったら、画面をスクロールできるように「許可」する
-  DOM.canvas.style.touchAction = "auto"; 
   return _startAnalysis.apply(this, arguments);
 };
 
@@ -1744,8 +1602,6 @@ const _stopAnalysis = stopAnalysis;
 stopAnalysis = function(){
   const r = _stopAnalysis.apply(this, arguments);
   window.roiLocked = false;
-  // ★追加：測定が終わったら、再び枠をいじるためにスクロールを「禁止」に戻す
-  DOM.canvas.style.touchAction = "auto"; 
   return r;
 };
 
@@ -1942,7 +1798,6 @@ stopAnalysis = function(){
       const data = {
         savedAt: Date.now(),
         countsCurrentHour,
-        unknownTotal,
         recordsHourly,
         analysisStartTime: analysisStartTime ? analysisStartTime.getTime() : null,
         hourWindowStart: hourWindowStart ? hourWindowStart.getTime() : null,
@@ -1963,7 +1818,6 @@ stopAnalysis = function(){
       
       // 変数に展開
       countsCurrentHour = data.countsCurrentHour || zeroCounts();
-      unknownTotal = data.unknownTotal || 0;
       recordsHourly = data.recordsHourly || [];
       
       if (data.analysisStartTime) analysisStartTime = new Date(data.analysisStartTime);
@@ -2006,7 +1860,6 @@ stopAnalysis = function(){
       // ★復旧モード：変数をリセットせず維持
       const savedData = {
         c: countsCurrentHour,
-        ut: unknownTotal,
         rh: recordsHourly,
         as: analysisStartTime,
         hw: hourWindowStart
@@ -2016,7 +1869,6 @@ stopAnalysis = function(){
 
       // 変数を書き戻す
       countsCurrentHour = savedData.c;
-      unknownTotal = savedData.ut;
       recordsHourly = savedData.rh;
       analysisStartTime = savedData.as;
       hourWindowStart = savedData.hw;
@@ -2054,8 +1906,17 @@ stopAnalysis = function(){
   // --- 6. exportCSVをフック（CSV保存完了＝削除） ---
   const _exportCSV = exportCSV;
   exportCSV = async function() {
-    await _exportCSV.apply(this, arguments);
-    clearBackup(); // ★ご要望通り削除（メモリ解放）
+    try {
+      // 1. まずはCSVの保存を試みる
+      await _exportCSV.apply(this, arguments);
+      
+      // 2. 保存が無事に完了した（エラーが起きなかった）場合のみ、バックアップを消す
+      clearBackup(); 
+    } catch (e) {
+      // 3. もし保存に失敗したら、データを守るためにバックアップは残す
+      console.error("CSV出力エラー:", e);
+      toast("出力に失敗したため、データを保持します", true);
+    }
   };
 
   // --- 7. バックアップ間隔制御 ---
