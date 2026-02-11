@@ -539,7 +539,7 @@ function setupRoiDrag(){
   if(!c) return;
 
   // 初期状態ではブラウザのスクロールを許可
-  c.style.touchAction = "none";
+  c.style.touchAction = "auto";
 
   let dragging = false;
   let anchor = null; 
@@ -614,12 +614,12 @@ const moveDrag = (ev)=>{
     anchor = null;
     
     // 指を離したらスクロールを許可に戻す
-    c.style.touchAction = "none";
+    c.style.touchAction = "auto";
     c.classList.remove("roi-active");
     
     saveRoi();
   };
-  c.addEventListener("pointerdown", startDrag);
+  c.addEventListener("pointerdown", startDrag, { passive: false });
   c.addEventListener("pointermove", moveDrag);
   c.addEventListener("pointerup", endDrag);
   c.addEventListener("pointercancel", endDrag);
@@ -1726,7 +1726,7 @@ stopAnalysis = function(){
   const r = _stopAnalysis.apply(this, arguments);
   window.roiLocked = false;
   // ★追加：測定が終わったら、再び枠をいじるためにスクロールを「禁止」に戻す
-  DOM.canvas.style.touchAction = "none"; 
+  DOM.canvas.style.touchAction = "auto"; 
   return r;
 };
 
