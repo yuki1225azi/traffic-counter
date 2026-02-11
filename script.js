@@ -616,11 +616,25 @@ const moveDrag = (ev)=>{
     if(!dragging) return;
     dragging = false;
     anchor = null;
-    
-    // 指を離した瞬間にスクロールを許可に戻す
-    c.style.touchAction = "auto";
 
-    c.classList.remove("roi-active");
+    // タッチデバイス（スマホ・タブレット）かどうかを判定
+    const isTouch = window.matchMedia("(pointer: coarse)").matches;
+
+    if (isTouch) {
+      // --- スマホの場合：1秒間「オレンジ維持 ＋ スクロール禁止」を継続 ---
+      setTimeout(() => {
+        // 1秒経つ前に次のドラッグが始まっていなければ、通常状態に戻す
+        if (!dragging) {
+          c.style.touchAction = "auto";      // スクロール許可
+          c.classList.remove("roi-active"); // 白線に戻す
+        }
+      }, 1000);
+    } else {
+      // --- パソコンの場合：即座に「白線 ＋ スクロール許可」に戻す ---
+      c.style.touchAction = "auto";
+      c.classList.remove("roi-active");
+    }
+
     saveRoi();
   };
 
