@@ -617,13 +617,8 @@ const moveDrag = (ev)=>{
     dragging = false;
     anchor = null;
     
-    // 指を離しても、スリップ防止のため1秒間はスクロール禁止を維持する
-    setTimeout(() => {
-      // 1秒後に、まだ次のドラッグが始まっていない場合のみスクロールを許可に戻す
-      if (!dragging) {
-        c.style.touchAction = "auto";
-      }
-    }, 1000);
+    // 指を離した瞬間にスクロールを許可に戻す
+    c.style.touchAction = "auto";
 
     c.classList.remove("roi-active");
     saveRoi();
