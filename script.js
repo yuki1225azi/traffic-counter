@@ -539,7 +539,7 @@ function setupRoiDrag(){
   if(!c) return;
 
   // 初期状態ではブラウザのスクロールを許可
-  c.style.touchAction = "auto";
+  c.style.touchAction = "none";
 
   let dragging = false;
   let anchor = null; 
@@ -614,7 +614,7 @@ const moveDrag = (ev)=>{
     anchor = null;
     
     // 指を離したらスクロールを許可に戻す
-    c.style.touchAction = "auto";
+    c.style.touchAction = "none";
     c.classList.remove("roi-active");
     
     saveRoi();
@@ -1713,18 +1713,22 @@ function formatTimestamp(d){
 (function lockRoiAfterStartPatch(){
   try{
     // 1) start/stop を差し替え
-    const _startAnalysis = startAnalysis;
-    startAnalysis = function(){
-      window.roiLocked = true; // windowオブジェクトを使って確実に管理
-      return _startAnalysis.apply(this, arguments);
-    };
+const _startAnalysis = startAnalysis;
+startAnalysis = function(){
+  window.roiLocked = true;
+  // ★追加：測定が始まったら、画面をスクロールできるように「許可」する
+  DOM.canvas.style.touchAction = "auto"; 
+  return _startAnalysis.apply(this, arguments);
+};
 
-    const _stopAnalysis = stopAnalysis;
-    stopAnalysis = function(){
-      const r = _stopAnalysis.apply(this, arguments);
-      window.roiLocked = false; // 測定終了で解除
-      return r;
-    };
+const _stopAnalysis = stopAnalysis;
+stopAnalysis = function(){
+  const r = _stopAnalysis.apply(this, arguments);
+  window.roiLocked = false;
+  // ★追加：測定が終わったら、再び枠をいじるためにスクロールを「禁止」に戻す
+  DOM.canvas.style.touchAction = "none"; 
+  return r;
+};
 
     // 2) 測定中は操作をブロック
     const c = DOM.canvas;
