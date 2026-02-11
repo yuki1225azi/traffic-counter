@@ -560,6 +560,9 @@ function setupRoiDrag(){
     // 測定中、またはロック中は操作させない
     if(isAnalyzing || window.roiLocked === true) return;
     
+    // ★改良点1：座標計算の前にまずスクロールをロックする
+    c.style.touchAction = "none";
+
     const p = getCanvasPoint(ev);
     const r = getRoiPx();
     const HIT_RADIUS = getHitRadius();
@@ -588,15 +591,16 @@ function setupRoiDrag(){
       dragging = true;
       anchor = hitCorner.opp;
       
-      // 【重要】ここで「スクロール禁止」をブラウザに伝えます
-      c.style.touchAction = "none"; 
+      // ★改良点2：すでに none になっているのでここではクラス追加のみ
       c.classList.add("roi-active"); 
       
       try{ c.setPointerCapture(ev.pointerId); }catch(_e){}
       
-      // これが「画面スクロールではなく、この処理を優先しろ」という命令です
       ev.preventDefault();
       ev.stopPropagation();
+    } else {
+      // ★改良点3：ハンドルに当たっていなければ、スクロール許可に戻す
+      c.style.touchAction = "auto";
     }
   };
 
