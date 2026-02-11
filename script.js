@@ -1315,7 +1315,7 @@ function drawAllOverlays(ctx) {
     ctx.strokeStyle = color[cls] || "#fff";
     ctx.strokeRect(x,y,w,h);
     
-    const label = `${cls} ${Math.floor(tr.score*100)}% [#${tr.id}]`;
+    const label = `${cls} ${Math.floor(tr.score*100)}%`;
     ctx.fillStyle = "rgba(0,0,0,0.6)";
     ctx.fillRect(x, Math.max(0, y-18), ctx.measureText(label).width + 6, 18);
     ctx.fillStyle = "#fff";
@@ -1981,4 +1981,3 @@ stopAnalysis = function(){
   window.addEventListener("beforeunload", saveBackup);
 
 })();
-
