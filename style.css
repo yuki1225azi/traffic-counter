@@ -424,3 +424,62 @@ font-weight: normal;
   height: 100% !important;
   border-radius: 10px;
 }
+
+/* =========================================
+   ズームコントロール (iPhone風)
+   ========================================= */
+.zoom-controls {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100; /* ROI枠より手前に */
+  
+  display: flex;
+  gap: 12px;
+  background: rgba(0, 0, 0, 0.4); /* 背景うっすら黒 */
+  padding: 6px 12px;
+  border-radius: 20px;
+  backdrop-filter: blur(4px);
+}
+
+.zoom-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.8rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  padding: 0;
+  box-shadow: none; /* 既存のbtnスタイルを打ち消し */
+}
+
+/* 選択中のボタン */
+.zoom-btn.active {
+  background: #fdd835; /* 黄色 */
+  color: #000;
+  transform: scale(1.1);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+}
+
+.zoom-btn:active {
+  transform: scale(0.95);
+}
+
+/* ズーム時に映像が枠からはみ出さないようにする */
+#video-container {
+  overflow: hidden; /* 必須 */
+}
+
+/* 映像とキャンバスをアニメーションさせるクラス */
+#video, #canvas {
+  transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transform-origin: center center; /* 中心から拡大 */
+}
