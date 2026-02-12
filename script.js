@@ -395,7 +395,6 @@ function removeSettingsInfoMark(){
 }
 
 let model = null;
-let currentZoomLevel = 1.0;
 let isAnalyzing = false;
 let rafId = null;
 let lastInferTime = 0;
@@ -1282,18 +1281,9 @@ function mainRenderLoop() {
 
   // 1. 共通：映像をキャンバスに描く（常に実行）
   if (DOM.video.videoWidth) {
+    // 画面サイズを自動調整
     adjustCanvasSize(); 
-
-    // ★変更：ズーム倍率に基づいて中心を切り抜き、拡大描画する
-    const vw = DOM.video.videoWidth;
-    const vh = DOM.video.videoHeight;
-    const cropW = vw / currentZoomLevel;
-    const cropH = vh / currentZoomLevel;
-    const cropX = (vw - cropW) / 2;
-    const cropY = (vh - cropH) / 2;
-
-    // drawImage(映像, 元X, 元Y, 元幅, 元高さ, 先X, 先Y, 先幅, 先高さ)
-    ctx.drawImage(DOM.video, cropX, cropY, cropW, cropH, 0, 0, DOM.canvas.width, DOM.canvas.height);
+    ctx.drawImage(DOM.video, 0, 0, DOM.canvas.width, DOM.canvas.height);
   }
 
   // 2. 測定中だけ実行する処理
@@ -1304,9 +1294,7 @@ function mainRenderLoop() {
     // 解析頻度（FPS）に合わせてAIを動かす
     if (now - lastInferTime >= interval) {
       lastInferTime = now;
-      
-      // ★変更：AIには「ズーム済みのキャンバス」を渡す（遠くの車が大きく見える状態で解析）
-      model.detect(DOM.canvas).then(preds => {
+      model.detect(DOM.video).then(preds => {
         const scoreTh = Number(DOM.scoreTh.value);
         // 設定した感度以上のものだけ抽出
         const raw = preds.filter(p => UI_CATS.includes(p.class) && p.score >= scoreTh)
@@ -1327,6 +1315,50 @@ function mainRenderLoop() {
 
   // 次のコマを予約してループさせる
   requestAnimationFrame(mainRenderLoop);
+}
+
+// 枠描画専用の関数（整理のために分離）
+// 枠描画専用の関数（ID非表示 ＆ 残像表示版）
+function drawAllOverlays(ctx) {
+  ctx.save();
+  ctx.font = "14px Segoe UI, Arial";
+  ctx.lineWidth = 2;
+  const color = { car:"#1e88e5", bus:"#43a047", truck:"#fb8c00", motorcycle:"#8e24aa", bicycle:"#fdd835", person:"#e53935" };
+
+  for(const tr of tracker.tracks){
+    // ★修正A：確定していないものだけスキップ（見失ったものも表示する）
+    if(tr.state !== "confirmed") continue;
+
+    const [x,y,w,h] = tr.bbox;
+    const cls = tr.cls;
+
+    if(countMode === "vehicle" && cls === "person") continue;
+    if(countMode === "pedestrian" && cls !== "person") continue;
+
+    const c = color[cls] || "#fff";
+
+    // ★修正B：見失っている（画面端など）場合は半透明にする
+    if (tr.lostAge > 0) {
+      ctx.globalAlpha = 0.5;
+    } else {
+      ctx.globalAlpha = 1.0;
+    }
+
+    ctx.strokeStyle = c;
+    ctx.strokeRect(x,y,w,h);
+    
+    // ★修正C：ID（[#123]）を削除し、確信度だけにしました
+    const label = `${cls} ${Math.floor(tr.score*100)}%`; 
+
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(x, Math.max(0, y-18), ctx.measureText(label).width + 6, 18);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(label, x+3, Math.max(10, y-4));
+    
+    // 透明度を戻す
+    ctx.globalAlpha = 1.0;
+  }
+  ctx.restore();
 }
 
 /* ========= ログ/CSV ========= */
@@ -1989,156 +2021,120 @@ stopAnalysis = function(){
 })();
 
 /* =========================================
-   スクロール連動：ミニプレーヤー化 ＆ ドラッグ移動パッチ (下端判定版)
-   - 映像コンテナの「下端」が画面上部に消えたら発動する
+   スクロール連動：ミニプレーヤー化 ＆ ドラッグ移動パッチ (案1採用)
+   - 下にスクロールして映像が見えなくなったら右下にフロート表示
+   - フロート中は指でドラッグ移動が可能
+   - クリックで一番上に戻る
    ========================================= */
 (function floatingPlayerPatch(){
   const container = document.getElementById("video-container");
   if(!container) return;
 
-  // 1. プレースホルダー（映像が抜けた穴を埋める箱）
+  // 1. プレースホルダー作成（場所取り用）
   const placeholder = document.createElement("div");
   placeholder.id = "video-placeholder";
-  // 挿入場所: コンテナの直前
   container.parentNode.insertBefore(placeholder, container);
 
-  // 2. 監視用センチネル（透明な線）
-  // ★修正：コンテナの「下」に配置する
-  const sentinel = document.createElement("div");
-  sentinel.id = "video-sentinel";
-  sentinel.style.height = "1px";
-  sentinel.style.width = "100%";
-  sentinel.style.pointerEvents = "none";
-  sentinel.style.marginTop = "-1px"; // 隙間ができないよう調整
-  
-  // コンテナの「次」に挿入 = コンテナの下に配置
-  if (container.nextSibling) {
-    container.parentNode.insertBefore(sentinel, container.nextSibling);
-  } else {
-    container.parentNode.appendChild(sentinel);
-  }
-
-  // 3. スクロール監視
+  // 2. スクロール監視 (IntersectionObserver)
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
-      // プレースホルダー高さ同期
+      // プレースホルダーの高さを映像エリアと同期
       if(container.offsetHeight > 0 && !container.classList.contains("is-floating")){
          placeholder.style.height = container.offsetHeight + "px";
       }
 
-      // ★判定ロジック：
-      // 「監視線（映像の下端）が画面外（上）に行った」とき = 映像が完全に見えなくなったとき
-      if (!entry.isIntersecting && entry.boundingClientRect.top < 0) {
+      /* --- 修正箇所：判定ロジック --- */
+      // entry.isIntersecting が false（画面から消えた）
+      // かつ entry.boundingClientRect.bottom < 0 （画面の上方向へ完全に突き抜けた）
+      if (!entry.isIntersecting && entry.boundingClientRect.bottom < 0) {
+        
         // --- フロートON ---
-        if(!container.classList.contains("is-floating")){
-          placeholder.style.display = "block";
-          container.classList.add("is-floating");
-          
-          // 位置リセット
-          container.style.transform = ""; 
-          container.style.left = ""; 
-          container.style.top = "";
-          container.style.bottom = "20px";
-          container.style.right = "20px";
-          container.style.width = ""; 
-        }
-      } else {
-        // --- フロートOFF ---
-        // 監視線（映像の下端）が画面内に入ってきたら = 映像が見え始めたら戻す
-        if(container.classList.contains("is-floating")){
-          container.classList.remove("is-floating");
-          placeholder.style.display = "none";
-          
-          // スタイル解除
-          container.style.transform = "";
-          container.style.left = "";
-          container.style.top = "";
-          container.style.bottom = "";
-          container.style.right = "";
-          container.style.width = "";
-        }
+        placeholder.style.display = "block";
+        container.classList.add("is-floating");
+        
+        // 位置をリセット（右下固定）
+        container.style.bottom = "20px";
+        container.style.right = "20px";
+        container.style.left = "auto";
+        container.style.top = "auto";
+        
+      } else if (entry.isIntersecting) {
+        // --- フロートOFF（映像の定位置が1ピクセルでも見えたら戻す） ---
+        container.classList.remove("is-floating");
+        placeholder.style.display = "none";
+        
+        // スタイルを全クリア
+        container.style.left = "";
+        container.style.top = "";
+        container.style.bottom = "";
+        container.style.right = "";
+        container.style.width = "";
       }
     });
   }, { 
-    threshold: 0,
-    rootMargin: "0px" // オフセットなし（下端が画面端に来たら即反応）
+    threshold: 0,        // 0%で見えなくなったと判定
+    rootMargin: "0px"    // マージンなし（画面端ぴったりで判定）
   });
 
-  observer.observe(sentinel);
+  observer.observe(placeholder);
 
-  // 4. ドラッグ移動ロジック
+  // 3. ドラッグ移動ロジック（フロート時のみ有効）
   let isDragging = false;
   let startX, startY, initialLeft, initialTop;
 
+  // --- タッチ開始 ---
   container.addEventListener("touchstart", (e) => {
+    // フロート中でないなら何もしない（ROI操作などを優先）
     if (!container.classList.contains("is-floating")) return;
+    
+    // 画面スクロールを止める
     e.preventDefault(); 
     isDragging = true;
+    
     const touch = e.touches[0];
     startX = touch.clientX;
     startY = touch.clientY;
+
+    // 現在の位置を取得して、固定配置(bottom/right)から座標配置(left/top)に切り替える
     const rect = container.getBoundingClientRect();
     initialLeft = rect.left;
     initialTop = rect.top;
     
+    // CSSの固定配置を解除し、JSで制御開始
     container.style.bottom = "auto";
     container.style.right = "auto";
     container.style.left = initialLeft + "px";
     container.style.top = initialTop + "px";
+    
+    // 幅が崩れないように固定値をセット
     container.style.width = rect.width + "px"; 
   }, { passive: false });
 
+  // --- 指を動かしている間 ---
   window.addEventListener("touchmove", (e) => {
     if (!isDragging) return;
-    e.preventDefault(); 
+    e.preventDefault(); // 画面全体のスクロールを完全に阻止
+    
     const touch = e.touches[0];
     const dx = touch.clientX - startX;
     const dy = touch.clientY - startY;
+    
+    // 新しい位置を適用
     container.style.left = `${initialLeft + dx}px`;
     container.style.top = `${initialTop + dy}px`;
   }, { passive: false });
 
+  // --- 指を離した時 ---
   window.addEventListener("touchend", () => {
     isDragging = false;
   });
 
+  // 4. クリックで戻る機能
+  // (少しでもドラッグしたら「戻る」を発動させない判定を入れるとより親切だが、今回は簡易実装)
   container.addEventListener("click", (e) => {
     if (container.classList.contains("is-floating") && !isDragging) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   });
 
-})();
-
-/* =========================================
-   カメラズーム機能パッチ (デジタルズーム)
-   ========================================= */
-(function cameraZoomPatch(){
-  const buttons = document.querySelectorAll(".zoom-btn");
-  const video = document.getElementById("video");
-  const canvas = document.getElementById("canvas");
-
-  if(!buttons.length || !video || !canvas) return;
-
-  buttons.forEach(btn => {
-    btn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation(); // ROI操作などの誤爆防止
-
-      // 1. 見た目のアクティブ切り替え
-      buttons.forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-
-      // 2. ズーム倍率を取得して適用
-      const scale = parseFloat(btn.dataset.zoom);
-      currentZoomLevel = scale; // ★変数を更新
-
-      // ★重要：以前のCSS拡大が残らないようにリセットする
-      video.style.transform = "";
-      canvas.style.transform = "";
-
-      // 3. トーストで通知
-      if(window.toast) toast(`ズーム: ${scale}倍`);
-    });
-  });
 })();
