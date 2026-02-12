@@ -2038,32 +2038,31 @@ stopAnalysis = function(){
   // 2. スクロール監視 (IntersectionObserver)
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
-      // プレースホルダーの高さを映像エリアと同期
+      // プレースホルダーの高さを映像エリアと同期（レイアウト崩れ防止）
       if(container.offsetHeight > 0 && !container.classList.contains("is-floating")){
          placeholder.style.height = container.offsetHeight + "px";
       }
 
-      /* --- 修正箇所：判定ロジック --- */
-      // entry.isIntersecting が false（画面から消えた）
-      // かつ entry.boundingClientRect.bottom < 0 （画面の上方向へ完全に突き抜けた）
-      if (!entry.isIntersecting && entry.boundingClientRect.bottom < 0) {
-        
+      // 「上方向に消えた」かつ「見えなくなった」ときに発動
+      if (!entry.isIntersecting && entry.boundingClientRect.top < 0) {
         // --- フロートON ---
         placeholder.style.display = "block";
         container.classList.add("is-floating");
         
-        // 位置をリセット（右下固定）
+        // 位置・変形をリセット（CSSのbottom/rightに従う）
+        container.style.transform = ""; 
+        container.style.left = ""; 
+        container.style.top = "";
         container.style.bottom = "20px";
         container.style.right = "20px";
-        container.style.left = "auto";
-        container.style.top = "auto";
         
-      } else if (entry.isIntersecting) {
-        // --- フロートOFF（映像の定位置が1ピクセルでも見えたら戻す） ---
+      } else {
+        // --- フロートOFF ---
         container.classList.remove("is-floating");
         placeholder.style.display = "none";
         
-        // スタイルを全クリア
+        // スタイルを全クリアして元のレイアウトに戻す
+        container.style.transform = "";
         container.style.left = "";
         container.style.top = "";
         container.style.bottom = "";
@@ -2072,8 +2071,8 @@ stopAnalysis = function(){
       }
     });
   }, { 
-    threshold: 0,        // 0%で見えなくなったと判定
-    rootMargin: "0px"    // マージンなし（画面端ぴったりで判定）
+    threshold: 0, 
+    rootMargin: "-60px 0px 0px 0px" // 上端から60px過ぎたら反応
   });
 
   observer.observe(placeholder);
