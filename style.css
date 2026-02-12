@@ -384,3 +384,43 @@ font-weight: normal;
     padding: 4px 1px !important;    /* 左右の余白を詰めて、文字が入りきるようにする */
     white-space: nowrap !important; /* 勝手に改行されないようにする */
   }
+
+/* =========================================
+   案1：ドラッグ移動付きフロート表示用CSS
+   ========================================= */
+
+/* 通常時は非表示のプレースホルダー（映像が抜けた穴を埋める） */
+#video-placeholder {
+  width: 100%;
+  display: none; 
+}
+
+/* フロートモード（スクロールで発動） */
+#video-container.is-floating {
+  position: fixed !important;
+  /* 初期位置: 右下 */
+  bottom: 20px;
+  right: 20px;
+  
+  /* サイズ調整: 画面幅の45%くらい */
+  width: 45vw !important;
+  height: auto !important;
+  
+  /* ドラッグ時の動きを滑らかにしつつ、操作中は遅れないようにJSで制御 */
+  z-index: 9999;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+  border-radius: 12px;
+  border: 2px solid #fff;
+  background: #000;
+  
+  /* 形を崩さない */
+  aspect-ratio: 16 / 9;
+}
+
+/* 中身も追従させる */
+#video-container.is-floating video,
+#video-container.is-floating canvas {
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 10px;
+}
