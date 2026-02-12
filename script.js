@@ -905,8 +905,19 @@ function applyCountByMode(cls){
 // --- メイン判定ロジック（新・滞在型） ---
 
 function updateRoiCountingForConfirmedTracks(){
-  const r = getRoiPx(); 
-  const centerWidth = DOM.hitArea ? Number(DOM.hitArea.value) : 0.0;
+  // --- 1. 設定値に基づいて「実際に判定に使う枠」を計算 ---
+  const r_orig = getRoiPx(); 
+  // optionのvalue(0.4など)を使い、中心からの倍率を計算 (例: 0.2なら中心から20%の広さ)
+  const factor = DOM.hitArea ? (1.0 - Number(DOM.hitArea.value)) : 1.0; 
+
+  // ROIの重心（中心点）を求める
+  const centroid = r_orig.reduce((a, b) => ({x: a.x + b.x/4, y: a.y + b.y/4}), {x:0, y:0});
+  
+  // 中心に向かって頂点をスケーリング（縮小）させた新しい枠「r」を作成
+  const r = r_orig.map(p => ({
+    x: centroid.x + (p.x - centroid.x) * factor,
+    y: centroid.y + (p.y - centroid.y) * factor
+  }));
 
   for(const tr of tracker.tracks){
     if(tr.state !== "confirmed" || tr.counted) continue;
@@ -915,19 +926,15 @@ function updateRoiCountingForConfirmedTracks(){
     const c = tr.center();
     const prev = tr.prevCenter;
 
-    // 動いているかチェック
     let isMoving = true;
     if(prev){
        const dist = Math.sqrt((c.x - prev.x)**2 + (c.y - prev.y)**2);
        if(dist < 2.0) isMoving = false; 
     }
 
-    // 判定中心幅のロジックを適用
-    // 枠内判定（inRoi）
+    // --- 2. 縮小された枠「r」を使って判定を行う ---
     let inRoi = isPointInPolygon(c, r);
     
-    // 設定が「100%(0.0)」以外なら、枠の境界線から一定距離内側に入ったか厳密にチェックする準備
-    // 現状は中心点が枠に入ればカウント候補とする
     if(inRoi && !isMoving) continue;
 
     let isWarp = false;
@@ -951,7 +958,6 @@ function updateRoiCountingForConfirmedTracks(){
     }
   }
 }
-
 function onTrackRemoved(tr){
   // 消失回収 (Lost Recovery)
   // 画面端で消えたり、追跡が切れた場合に拾う
@@ -2011,5 +2017,123 @@ stopAnalysis = function(){
   });
   window.addEventListener("pagehide", saveBackup);
   window.addEventListener("beforeunload", saveBackup);
+
+})();
+
+/* =========================================
+   スクロール連動：ミニプレーヤー化 ＆ ドラッグ移動パッチ (案1採用)
+   - 下にスクロールして映像が見えなくなったら右下にフロート表示
+   - フロート中は指でドラッグ移動が可能
+   - クリックで一番上に戻る
+   ========================================= */
+(function floatingPlayerPatch(){
+  const container = document.getElementById("video-container");
+  if(!container) return;
+
+  // 1. プレースホルダー作成（場所取り用）
+  const placeholder = document.createElement("div");
+  placeholder.id = "video-placeholder";
+  container.parentNode.insertBefore(placeholder, container);
+
+  // 2. スクロール監視 (IntersectionObserver)
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      // プレースホルダーの高さを映像エリアと同期（レイアウト崩れ防止）
+      if(container.offsetHeight > 0 && !container.classList.contains("is-floating")){
+         placeholder.style.height = container.offsetHeight + "px";
+      }
+
+      // 「上方向に消えた」かつ「見えなくなった」ときに発動
+      if (!entry.isIntersecting && entry.boundingClientRect.top < 0) {
+        // --- フロートON ---
+        placeholder.style.display = "block";
+        container.classList.add("is-floating");
+        
+        // 位置・変形をリセット（CSSのbottom/rightに従う）
+        container.style.transform = ""; 
+        container.style.left = ""; 
+        container.style.top = "";
+        container.style.bottom = "20px";
+        container.style.right = "20px";
+        
+      } else {
+        // --- フロートOFF ---
+        container.classList.remove("is-floating");
+        placeholder.style.display = "none";
+        
+        // スタイルを全クリアして元のレイアウトに戻す
+        container.style.transform = "";
+        container.style.left = "";
+        container.style.top = "";
+        container.style.bottom = "";
+        container.style.right = "";
+        container.style.width = "";
+      }
+    });
+  }, { 
+    threshold: 0, 
+    rootMargin: "-60px 0px 0px 0px" // 上端から60px過ぎたら反応
+  });
+
+  observer.observe(placeholder);
+
+  // 3. ドラッグ移動ロジック（フロート時のみ有効）
+  let isDragging = false;
+  let startX, startY, initialLeft, initialTop;
+
+  // --- タッチ開始 ---
+  container.addEventListener("touchstart", (e) => {
+    // フロート中でないなら何もしない（ROI操作などを優先）
+    if (!container.classList.contains("is-floating")) return;
+    
+    // 画面スクロールを止める
+    e.preventDefault(); 
+    isDragging = true;
+    
+    const touch = e.touches[0];
+    startX = touch.clientX;
+    startY = touch.clientY;
+
+    // 現在の位置を取得して、固定配置(bottom/right)から座標配置(left/top)に切り替える
+    const rect = container.getBoundingClientRect();
+    initialLeft = rect.left;
+    initialTop = rect.top;
+    
+    // CSSの固定配置を解除し、JSで制御開始
+    container.style.bottom = "auto";
+    container.style.right = "auto";
+    container.style.left = initialLeft + "px";
+    container.style.top = initialTop + "px";
+    
+    // 幅が崩れないように固定値をセット
+    container.style.width = rect.width + "px"; 
+  }, { passive: false });
+
+  // --- 指を動かしている間 ---
+  window.addEventListener("touchmove", (e) => {
+    if (!isDragging) return;
+    e.preventDefault(); // 画面全体のスクロールを完全に阻止
+    
+    const touch = e.touches[0];
+    const dx = touch.clientX - startX;
+    const dy = touch.clientY - startY;
+    
+    // 新しい位置を適用
+    container.style.left = `${initialLeft + dx}px`;
+    container.style.top = `${initialTop + dy}px`;
+  }, { passive: false });
+
+  // --- 指を離した時 ---
+  window.addEventListener("touchend", () => {
+    isDragging = false;
+  });
+
+  // 4. クリックで戻る機能
+  // (少しでもドラッグしたら「戻る」を発動させない判定を入れるとより親切だが、今回は簡易実装)
+  container.addEventListener("click", (e) => {
+    if (container.classList.contains("is-floating") && !isDragging) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  });
 
 })();
