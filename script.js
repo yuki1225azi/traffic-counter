@@ -2021,72 +2021,92 @@ stopAnalysis = function(){
 })();
 
 /* =========================================
-   スクロール連動：ミニプレーヤー化 ＆ ドラッグ移動パッチ (案1採用)
-   - 下にスクロールして映像が見えなくなったら右下にフロート表示
-   - フロート中は指でドラッグ移動が可能
-   - クリックで一番上に戻る
+   スクロール連動：ミニプレーヤー化 ＆ ドラッグ移動パッチ (案2: 正確な下端判定版)
+   - 監視専用の透明マーカー(sentinel)を動画の下に配置することで、
+     「下端が隠れた瞬間」を正確に検知します。
    ========================================= */
 (function floatingPlayerPatch(){
   const container = document.getElementById("video-container");
   if(!container) return;
 
-  // 1. プレースホルダー作成（場所取り用）
+  // 1. プレースホルダー作成（フロート時のレイアウト崩れ防止用）
+  // ※これは表示/非表示を切り替えるため、監視には使いません
   const placeholder = document.createElement("div");
   placeholder.id = "video-placeholder";
   container.parentNode.insertBefore(placeholder, container);
 
-  // 2. スクロール監視 (IntersectionObserver)
+  // 2. 監視用マーカー（Sentinel）の作成
+  // ※これをコンテナの「直下」に配置し、常に監視します
+  const sentinel = document.createElement("div");
+  sentinel.id = "video-sentinel";
+  sentinel.style.height = "1px";        // 高さを1px確保
+  sentinel.style.width = "100%";
+  sentinel.style.marginTop = "-1px";    // レイアウトに影響しないよう相殺
+  sentinel.style.visibility = "hidden"; // 見えなくて良い
+  sentinel.style.pointerEvents = "none";
+  container.parentNode.insertBefore(sentinel, container.nextSibling);
+
+  // 3. スクロール監視 (IntersectionObserver)
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
-      // プレースホルダーの高さを映像エリアと同期（レイアウト崩れ防止）
+      // プレースホルダーの高さを、フロートしていない時の映像エリアと同期
       if(container.offsetHeight > 0 && !container.classList.contains("is-floating")){
          placeholder.style.height = container.offsetHeight + "px";
       }
 
-      // 「上方向に消えた」かつ「見えなくなった」ときに発動
+      // 【判定ロジック】
+      // マーカー(動画の下端)が「非表示」かつ「画面より上にある(top < 0)」場合
+      // → 動画全体がスクロールして上に消えたとみなす
       if (!entry.isIntersecting && entry.boundingClientRect.top < 0) {
+        
         // --- フロートON ---
-        placeholder.style.display = "block";
-        container.classList.add("is-floating");
-        
-        // 位置・変形をリセット（CSSのbottom/rightに従う）
-        container.style.transform = ""; 
-        container.style.left = ""; 
-        container.style.top = "";
-        container.style.bottom = "20px";
-        container.style.right = "20px";
-        
+        if (!container.classList.contains("is-floating")) {
+          placeholder.style.display = "block"; // 抜けた穴を埋める
+          container.classList.add("is-floating");
+          
+          // 位置リセット & 右下配置
+          container.style.transform = ""; 
+          container.style.left = ""; 
+          container.style.top = "";
+          container.style.bottom = "20px";
+          container.style.right = "20px";
+          // スマホでのサイズ調整（必要に応じて）
+          container.style.width = "45vw"; 
+        }
+
       } else {
         // --- フロートOFF ---
-        container.classList.remove("is-floating");
-        placeholder.style.display = "none";
-        
-        // スタイルを全クリアして元のレイアウトに戻す
-        container.style.transform = "";
-        container.style.left = "";
-        container.style.top = "";
-        container.style.bottom = "";
-        container.style.right = "";
-        container.style.width = "";
+        // マーカーが画面内に戻ってきた（または画面より下にある）
+        if (container.classList.contains("is-floating")) {
+          container.classList.remove("is-floating");
+          placeholder.style.display = "none";
+          
+          // スタイル全クリア（元のレイアウトに戻す）
+          container.style.transform = "";
+          container.style.left = "";
+          container.style.top = "";
+          container.style.bottom = "";
+          container.style.right = "";
+          container.style.width = "";
+        }
       }
     });
   }, { 
     threshold: 0, 
-    rootMargin: "-60px 0px 0px 0px" // 上端から60px過ぎたら反応
+    rootMargin: "0px" // オフセットなしで、境界線を厳密に判定
   });
 
-  observer.observe(placeholder);
+  // 監視を開始するのは「動画」ではなく「マーカー」
+  observer.observe(sentinel);
 
-  // 3. ドラッグ移動ロジック（フロート時のみ有効）
+  // 4. ドラッグ移動ロジック（フロート時のみ有効）
   let isDragging = false;
   let startX, startY, initialLeft, initialTop;
 
   // --- タッチ開始 ---
   container.addEventListener("touchstart", (e) => {
-    // フロート中でないなら何もしない（ROI操作などを優先）
     if (!container.classList.contains("is-floating")) return;
     
-    // 画面スクロールを止める
     e.preventDefault(); 
     isDragging = true;
     
@@ -2094,31 +2114,27 @@ stopAnalysis = function(){
     startX = touch.clientX;
     startY = touch.clientY;
 
-    // 現在の位置を取得して、固定配置(bottom/right)から座標配置(left/top)に切り替える
     const rect = container.getBoundingClientRect();
     initialLeft = rect.left;
     initialTop = rect.top;
     
-    // CSSの固定配置を解除し、JSで制御開始
+    // CSSの固定配置を解除し、座標配置に切り替える
     container.style.bottom = "auto";
     container.style.right = "auto";
     container.style.left = initialLeft + "px";
     container.style.top = initialTop + "px";
-    
-    // 幅が崩れないように固定値をセット
     container.style.width = rect.width + "px"; 
   }, { passive: false });
 
   // --- 指を動かしている間 ---
   window.addEventListener("touchmove", (e) => {
     if (!isDragging) return;
-    e.preventDefault(); // 画面全体のスクロールを完全に阻止
+    e.preventDefault();
     
     const touch = e.touches[0];
     const dx = touch.clientX - startX;
     const dy = touch.clientY - startY;
     
-    // 新しい位置を適用
     container.style.left = `${initialLeft + dx}px`;
     container.style.top = `${initialTop + dy}px`;
   }, { passive: false });
@@ -2128,8 +2144,7 @@ stopAnalysis = function(){
     isDragging = false;
   });
 
-  // 4. クリックで戻る機能
-  // (少しでもドラッグしたら「戻る」を発動させない判定を入れるとより親切だが、今回は簡易実装)
+  // 5. クリックで戻る機能
   container.addEventListener("click", (e) => {
     if (container.classList.contains("is-floating") && !isDragging) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
