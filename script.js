@@ -395,6 +395,7 @@ function removeSettingsInfoMark(){
 }
 
 let model = null;
+let currentZoomLevel = 1.0;
 let isAnalyzing = false;
 let rafId = null;
 let lastInferTime = 0;
@@ -1281,9 +1282,18 @@ function mainRenderLoop() {
 
   // 1. 共通：映像をキャンバスに描く（常に実行）
   if (DOM.video.videoWidth) {
-    // 画面サイズを自動調整
     adjustCanvasSize(); 
-    ctx.drawImage(DOM.video, 0, 0, DOM.canvas.width, DOM.canvas.height);
+
+    // ★変更：ズーム倍率に基づいて中心を切り抜き、拡大描画する
+    const vw = DOM.video.videoWidth;
+    const vh = DOM.video.videoHeight;
+    const cropW = vw / currentZoomLevel;
+    const cropH = vh / currentZoomLevel;
+    const cropX = (vw - cropW) / 2;
+    const cropY = (vh - cropH) / 2;
+
+    // drawImage(映像, 元X, 元Y, 元幅, 元高さ, 先X, 先Y, 先幅, 先高さ)
+    ctx.drawImage(DOM.video, cropX, cropY, cropW, cropH, 0, 0, DOM.canvas.width, DOM.canvas.height);
   }
 
   // 2. 測定中だけ実行する処理
@@ -1294,7 +1304,9 @@ function mainRenderLoop() {
     // 解析頻度（FPS）に合わせてAIを動かす
     if (now - lastInferTime >= interval) {
       lastInferTime = now;
-      model.detect(DOM.video).then(preds => {
+      
+      // ★変更：AIには「ズーム済みのキャンバス」を渡す（遠くの車が大きく見える状態で解析）
+      model.detect(DOM.canvas).then(preds => {
         const scoreTh = Number(DOM.scoreTh.value);
         // 設定した感度以上のものだけ抽出
         const raw = preds.filter(p => UI_CATS.includes(p.class) && p.score >= scoreTh)
@@ -1315,50 +1327,6 @@ function mainRenderLoop() {
 
   // 次のコマを予約してループさせる
   requestAnimationFrame(mainRenderLoop);
-}
-
-// 枠描画専用の関数（整理のために分離）
-// 枠描画専用の関数（ID非表示 ＆ 残像表示版）
-function drawAllOverlays(ctx) {
-  ctx.save();
-  ctx.font = "14px Segoe UI, Arial";
-  ctx.lineWidth = 2;
-  const color = { car:"#1e88e5", bus:"#43a047", truck:"#fb8c00", motorcycle:"#8e24aa", bicycle:"#fdd835", person:"#e53935" };
-
-  for(const tr of tracker.tracks){
-    // ★修正A：確定していないものだけスキップ（見失ったものも表示する）
-    if(tr.state !== "confirmed") continue;
-
-    const [x,y,w,h] = tr.bbox;
-    const cls = tr.cls;
-
-    if(countMode === "vehicle" && cls === "person") continue;
-    if(countMode === "pedestrian" && cls !== "person") continue;
-
-    const c = color[cls] || "#fff";
-
-    // ★修正B：見失っている（画面端など）場合は半透明にする
-    if (tr.lostAge > 0) {
-      ctx.globalAlpha = 0.5;
-    } else {
-      ctx.globalAlpha = 1.0;
-    }
-
-    ctx.strokeStyle = c;
-    ctx.strokeRect(x,y,w,h);
-    
-    // ★修正C：ID（[#123]）を削除し、確信度だけにしました
-    const label = `${cls} ${Math.floor(tr.score*100)}%`; 
-
-    ctx.fillStyle = "rgba(0,0,0,0.6)";
-    ctx.fillRect(x, Math.max(0, y-18), ctx.measureText(label).width + 6, 18);
-    ctx.fillStyle = "#fff";
-    ctx.fillText(label, x+3, Math.max(10, y-4));
-    
-    // 透明度を戻す
-    ctx.globalAlpha = 1.0;
-  }
-  ctx.restore();
 }
 
 /* ========= ログ/CSV ========= */
@@ -2162,12 +2130,12 @@ stopAnalysis = function(){
       btn.classList.add("active");
 
       // 2. ズーム倍率を取得して適用
-      const scale = btn.dataset.zoom;
-      
-      // CSS transformで拡大 (GPUアクセラレーションが効くので軽量)
-      const transformValue = `scale(${scale})`;
-      video.style.transform = transformValue;
-      canvas.style.transform = transformValue;
+      const scale = parseFloat(btn.dataset.zoom);
+      currentZoomLevel = scale; // ★変数を更新
+
+      // ★重要：以前のCSS拡大が残らないようにリセットする
+      video.style.transform = "";
+      canvas.style.transform = "";
 
       // 3. トーストで通知
       if(window.toast) toast(`ズーム: ${scale}倍`);
