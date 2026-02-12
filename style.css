@@ -50,7 +50,8 @@ body{
       "video counts settings"
       "video logs settings";
     gap: 0.5rem;
-    height: calc(100vh - 6rem);
+    height: calc(100vh - 6rem);  /* 予備（古いブラウザ用） */
+    height: calc(100dvh - 6rem); /* 本命（アドレスバーの伸縮に対応） */
 
     #video-container {
       aspect-ratio: unset;   /* デフォルトのアスペクト比指定を解除（PC表示は従来どおり） */
