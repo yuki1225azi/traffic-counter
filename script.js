@@ -518,8 +518,17 @@ function setupRoiDrag(){
     return 44 * displayToInternalScale; 
   };
 
+  /* script.js の setupRoiDrag 関数内 */
+
   const startDrag = (ev)=>{
+    // 既存のロック判定
     if(isAnalyzing || window.roiLocked === true) return;
+    
+    // ★追加：ピクチャインピクチャ（フローティング）中はROI操作を禁止
+    // これにより、ウインドウ移動操作とROI変形操作が衝突しなくなります
+    if(DOM.videoContainer && DOM.videoContainer.classList.contains("is-floating")){
+      return; 
+    }
     
     // 【ラグ解消】触れた瞬間に即ロック
     c.style.touchAction = "none"; 
