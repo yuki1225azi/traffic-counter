@@ -474,7 +474,7 @@ function getCanvasPoint(ev){
   const cw = DOM.canvas.width  || 1;
   const ch = DOM.canvas.height || 1;
 
-  const scale = Math.max(rect.width / cw, rect.height / ch);
+  const scale = Math.min(rect.width / cw, rect.height / ch);
 
   // contain で発生する余白（レターボックス）
   const contentW = cw * scale;
@@ -1239,31 +1239,46 @@ function adjustCanvasSize(){
   DOM.canvas.height = h;
 
   // 2. 画面サイズに応じた表示モードの切り替え
-  // PC画面（幅1024px以上）かどうかを判定
-  const isPC = window.matchMedia("(min-width: 1024px)").matches;
-
-  if (isPC) {
-    // 【PCの場合】レイアウト重視（余白を埋める）
-    // 比率指定を解除し、CSSのグリッド枠いっぱいに広げる
-    if(DOM.videoContainer) DOM.videoContainer.style.aspectRatio = "";
-    
-    // 映像は「Cover（ズーム）」して、隙間なく埋め尽くす
-    DOM.video.style.objectFit = "cover";
-    DOM.canvas.style.objectFit = "cover";
-  } else {
-    // 【スマホの場合】映像の完全性重視（黒帯なし）
-    // 枠の比率を「カメラ映像の比率」に強制一致させる
-    if(DOM.videoContainer) DOM.videoContainer.style.aspectRatio = `${w} / ${h}`;
-    
-    // 枠と映像が同じ形になるので、containで綺麗に収まる
-    DOM.video.style.objectFit = "contain";
-    DOM.canvas.style.objectFit = "contain";
+  // ★修正：PC/スマホ問わず、コンテナ枠を「映像そのものの比率」に強制する
+  // これにより、コンテナ自体が映像サイズに変形するため、黒帯（余白）がなくなります。
+  if(DOM.videoContainer) {
+    DOM.videoContainer.style.aspectRatio = `${w} / ${h}`;
   }
+  
+  // 映像とコンテナが同じ比率になるため、contain でピッタリ収まります
+  DOM.video.style.objectFit = "contain";
+  DOM.canvas.style.objectFit = "contain";
 
   // 3. Canvasの表示サイズを100%にする
   // (getCanvasPointで計算補正するので、ここは100%でOK)
   DOM.canvas.style.width = "100%";
   DOM.canvas.style.height = "100%";
+
+  // ★追加：PC画面のとき、測定ログのボックス高さを「映像の下端」に合わせる計算処理
+  // これにより、ログが増えてもレイアウトが崩れず、表の中でスクロールするようになります
+  const infoPanel = document.getElementById("info-panel");
+  if (infoPanel) {
+    const isPC = window.matchMedia("(min-width: 1024px)").matches;
+    
+    if (isPC && DOM.videoContainer) {
+      // 1. 映像コンテナの「底（bottom）」の座標を取得
+      const videoBottom = DOM.videoContainer.getBoundingClientRect().bottom;
+      
+      // 2. ログパネルの「頂上（top）」の座標を取得
+      const panelTop = infoPanel.getBoundingClientRect().top;
+      
+      // 3. 差分を計算（これがログパネルに許された高さ）
+      // ※微調整のため -2px しています
+      const targetHeight = Math.floor(videoBottom - panelTop) - 2;
+      
+      // 4. 高さを適用（中身があふれたら info-panel 内の log-display がスクロールします）
+      infoPanel.style.height = `${Math.max(0, targetHeight)}px`;
+      
+    } else {
+      // スマホのときは高さ制限を解除（CSSの指定に戻す）
+      infoPanel.style.height = "";
+    }
+  }
 }
 
 
