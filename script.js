@@ -1957,10 +1957,7 @@ function formatTimestamp(d){
     // ロード完了後に通知とUI更新
     window.addEventListener("load", () => {
        updateCountUI(); // これでカードもタイトルも更新される
-       if(DOM.logBody){
-         DOM.logBody.innerHTML = "";
-         [...recordsHourly].reverse().forEach(row => insertLogRow(row));
-       }
+       rebuildLogTable(); // ★これ1行に置き換え
        toast("前回のデータを復元しました。\n「開始」で測定を再開します。", true);
     });
   }
@@ -1988,10 +1985,7 @@ function formatTimestamp(d){
       // UI再反映
       isResumed = false;
       updateCountUI(); // タイトルも更新される
-      if(DOM.logBody){
-        DOM.logBody.innerHTML = ""; 
-        [...recordsHourly].reverse().forEach(row => insertLogRow(row));
-      }
+      rebuildLogTable(); // ★これ1行に置き換え
 
       toast("中断箇所から測定を再開しました");
       saveBackup();
