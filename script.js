@@ -253,7 +253,7 @@ function setupTitleDescription(){
   // ★修正箇所：変数名を変更し、クリックイベントを追加
   const APP_GUIDE_TEXT = `【機能】
 AIがカメラ映像から車両5種と歩行者を判別し、交通量をリアルタイムでカウントします。
-測定データは毎時0分(正時)および測定終了時にCSVファイルとして保存され、1ファイルにつき最大1時間分(00分00秒〜59分59秒)の結果が記録されます。
+測定データはアプリ内に蓄積され、「終了」ボタンを押すと、全期間分をまとめたCSVファイルが一括で保存されます。
 
 【使い方の手順】
 1. 画面上の枠をドラッグして、測定したい道路に合わせます。
@@ -1402,11 +1402,11 @@ function startAutoSaveHourly(){
     // 次の00分になったら実行
     autoSaveTimer = setTimeout(async () => {
       // -------------------------------------------------
-      // 【1】前の時間枠（ファイルA）の締め処理
+      // 【変更点】CSV保存はせず、内部データ(recordsHourly)に溜め込む
+      // iPhoneでのポップアップ停止対策
       // -------------------------------------------------
       
-      // タイムスタンプを「1秒前（xx:59:59）」として記録
-      // これにより、前のファイルの最後は「59:59」になる
+      // 1. 前の時間の「59分59秒」のデータを記録して区切る
       const endTime = new Date(nextHour);
       endTime.setSeconds(endTime.getSeconds() - 1);
 
@@ -1418,40 +1418,37 @@ function startAutoSaveHourly(){
       };
       recordsHourly.push(rowA);
 
-      // ファイルA（前の1時間分）を出力
-      await exportCSV(recordsHourly, geo);
+      // ★削除：await exportCSV(...) は実行しない
+      // ★削除：recordsHourly = [] (リセット) もしない
+      // → これにより、データは消えずに次の時間分も後ろに追加されていきます
 
-
-      // -------------------------------------------------
-      // 【2】次の時間枠（ファイルB）の開始処理
-      // -------------------------------------------------
-
-      // カウントをリセット
-      recordsHourly = [];
+      // 2. カウント（画面上の数字）のみ0にリセット
       countsCurrentHour = zeroCounts();
 
       // 新しい時間の開始時刻（xx:00:00）
-      // nextHour変数をそのまま使うとズレがない
       const startTime = new Date(nextHour);
-
       hourWindowStart = startTime;
-      analysisStartTime = startTime;
-
-      // ★ファイルBの先頭行として「xx:00:00 (カウント0)」を記録しておく
-      const snapshotB = { ...countsCurrentHour }; // 全部0
+      analysisStartTime = startTime; // 必要に応じて更新
+      
+      // 新しい時間の「00分00秒」のデータを記録
+      const snapshotB = { ...countsCurrentHour }; 
       const rowB = {
-        timestamp: formatTimestamp(startTime), // xx:00:00
+        timestamp: formatTimestamp(startTime),
         ...snapshotB,
         total_counted_mode: 0
       };
       recordsHourly.push(rowB);
 
-      // 通常ループによる重複記録防止のため、最終スナップ時間を更新
+      // 重複記録防止
       lastSnapAt = Date.now();
 
+      // 画面更新
       updateHourTitle();
       updateCountUI();
-      updateLogDisplay(true);
+      updateLogDisplay(true); // ログ表は見やすくリセット
+
+      // ★変更：ダウンロード通知ではなく、継続通知を出す
+      toast(`${startTime.getHours()}時になりました。測定を継続します。`);
 
       // 次の正時（さらに1時間後）を予約
       scheduleNext();
