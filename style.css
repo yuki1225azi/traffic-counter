@@ -418,33 +418,3 @@ font-weight: normal;
   height: 100% !important;
   border-radius: 10px;
 }
-
-/* =========================================
-   スマホ横画面：映像コンテナを高さ100%に固定
-   ========================================= */
-@media (orientation: landscape) and (max-height: 600px) {
-
-  /* 1. 画面端の余白や最大幅制限を解除 */
-  #container {
-    padding: 0 !important;
-    margin: 0 !important;
-    max-width: none !important;
-  }
-
-  /* 2. 映像コンテナを画面の高さ(100vh)・幅(100vw)に強制固定 */
-  #video-container {
-    width: 100vw !important;
-    height: 100vh !important;       /* 画面の高さ100% */
-    
-    aspect-ratio: unset !important; /* JSのアスペクト比計算を無視 */
-    border-radius: 0 !important;    /* 角丸を解除 */
-    margin: 0 !important;
-  }
-
-  /* 3. 映像の中身もコンテナに合わせて最大化 */
-  #video, #canvas {
-    width: 100% !important;
-    height: 100% !important;
-    object-fit: contain !important; /* 黒帯が出ても比率を崩さず収める */
-  }
-}
