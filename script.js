@@ -501,95 +501,106 @@ function saveRoi(){
   try{ localStorage.setItem(LS_KEY_ROI, JSON.stringify(ROI_NORM)); }catch(_e){}
 }
 
-/* ========= ROI操作 ========= */
+/* ========= ROI操作（スクロール優先・誤操作防止版） ========= */
 function setupRoiDrag(){
   const c = DOM.canvas;
   if(!c) return;
 
   let dragging = false;
-  let dragIndex = -1; // 掴んでいる頂点の番号 (0〜3)
+  let dragIndex = -1;
 
-  const getHitRadius = () => {
+  // 判定範囲（見た目のピクセル数）
+  // ★修正：判定範囲は広げず、指先サイズ(30px)に留めることで
+  // 近くを触っても「スクロール」と判定される余地を残す
+  const TOUCH_HIT_RADIUS_PX = 30; 
+  const MOUSE_HIT_RADIUS_PX = 15;
+
+  const getHitRadius = (pointerType) => {
     const rect = c.getBoundingClientRect();
     if (!rect.width) return 40;
     
-    // 指の太さ（約44px）を基準に、画面サイズに合わせて自動計算する
+    // 表示サイズとCanvas内部解像度の比率
     const displayToInternalScale = c.width / rect.width;
-    return 44 * displayToInternalScale; 
+    
+    // ポインタの種類で判定サイズを切り替え
+    const visualRadius = (pointerType === 'touch' || pointerType === 'pen') 
+                         ? TOUCH_HIT_RADIUS_PX 
+                         : MOUSE_HIT_RADIUS_PX;
+    
+    return visualRadius * displayToInternalScale; 
   };
 
-  /* script.js の setupRoiDrag 関数内 */
-
   const startDrag = (ev)=>{
-    // 既存のロック判定
+    // 測定中やロック中、ミニプレーヤー時は操作させない
     if(isAnalyzing || window.roiLocked === true) return;
-    
-    // ★追加：ピクチャインピクチャ（フローティング）中はROI操作を禁止
-    // これにより、ウインドウ移動操作とROI変形操作が衝突しなくなります
-    if(DOM.videoContainer && DOM.videoContainer.classList.contains("is-floating")){
-      return; 
-    }
-    
-    // 【ラグ解消】触れた瞬間に即ロック
-    c.style.touchAction = "none"; 
+    if(DOM.videoContainer && DOM.videoContainer.classList.contains("is-floating")) return;
 
     const p = getCanvasPoint(ev);
-    const pts = getRoiPx();
-    const HIT_RADIUS = getHitRadius();
+    const pts = getRoiPx(); 
+    const HIT_RADIUS = getHitRadius(ev.pointerType);
 
-    // どの頂点に近いか判定
-    dragIndex = pts.findIndex(pt => {
-      return Math.sqrt((p.x - pt.x)**2 + (p.y - pt.y)**2) < HIT_RADIUS;
+    // 【重要ロジック】判定範囲内にある点の中で、指に「一番近い点」だけを対象にする
+    // これにより、範囲ギリギリでも「近い方の点」が優先して選ばれるため、
+    // 判定範囲をむやみに広げる必要がなくなります。
+    let closestIdx = -1;
+    let minDistance = Infinity;
+
+    pts.forEach((pt, i) => {
+      const dist = Math.sqrt((p.x - pt.x)**2 + (p.y - pt.y)**2);
+      if(dist <= HIT_RADIUS && dist < minDistance){
+        minDistance = dist;
+        closestIdx = i;
+      }
     });
 
-    if(dragIndex !== -1){
+    if(closestIdx !== -1){
+      // ★点がヒットした時だけドラッグ状態にする
       dragging = true;
+      dragIndex = closestIdx;
       c.classList.add("roi-active"); 
+
+      // 【ここがポイント】
+      // 点を掴んだことが確定した瞬間だけ、ブラウザのスクロール動作をキャンセルする
+      // これにより、点を外したタップはそのままスクロールになります
+      if(ev.cancelable) ev.preventDefault();
+      ev.stopImmediatePropagation();
+
       try{ c.setPointerCapture(ev.pointerId); }catch(_e){}
-      ev.preventDefault();
-      ev.stopPropagation();
     } else {
-      c.style.touchAction = "auto";
+      // ★ヒットしなかった場合は preventDefault() を呼ばない
+      // → ブラウザがこれを「スクロール操作」として処理してくれる
     }
   };
 
   const moveDrag = (ev)=>{
     if(!dragging || dragIndex === -1) return;
+    
+    // ドラッグ中はずっとスクロールさせない（枠の移動を優先）
+    if(ev.cancelable) ev.preventDefault();
+
     const p = getCanvasPoint(ev);
     const W = c.width || 1;
     const H = c.height || 1;
 
-    // 掴んでいる点だけを更新（0.0〜1.0の範囲内に制限）
     ROI_NORM[dragIndex] = {
       x: Math.max(0, Math.min(1, p.x / W)),
       y: Math.max(0, Math.min(1, p.y / H))
     };
-    ev.preventDefault();
   };
 
   const endDrag = (ev)=>{
     if(!dragging) return;
     dragging = false;
     dragIndex = -1;
-
-    const isTouch = window.matchMedia("(pointer: coarse)").matches;
-    if (isTouch) {
-      // 【1秒ガード】スマホの場合は1秒間オレンジ色とスクロール禁止を維持
-      setTimeout(() => {
-        if (!dragging) {
-          c.style.touchAction = "auto";
-          c.classList.remove("roi-active");
-        }
-      }, 1000);
-    } else {
-      c.style.touchAction = "auto";
-      c.classList.remove("roi-active");
-    }
+    
+    c.classList.remove("roi-active");
+    try{ c.releasePointerCapture(ev.pointerId); }catch(_e){}
     saveRoi();
   };
 
+  // passive: false が必須（スクロールを止める判断をJSでするため）
   c.addEventListener("pointerdown", startDrag, { passive: false });
-  c.addEventListener("pointermove", moveDrag);
+  c.addEventListener("pointermove", moveDrag, { passive: false });
   c.addEventListener("pointerup", endDrag);
   c.addEventListener("pointercancel", endDrag);
 }
