@@ -374,46 +374,37 @@ font-weight: normal;
 
 /* --- 8. 測定ログの表ヘッダー：文字サイズ縮小 & 余白詰め --- */
   #log-table th {
-    font-size: 0.7rem !important;   /* 文字サイズを小さく (約10.5px) */
-    padding: 4px 1px !important;    /* 左右の余白を詰めて、文字が入りきるようにする */
-    white-space: nowrap !important; /* 勝手に改行されないようにする */
+    font-size: 0.7rem !important;
+    padding: 4px 1px !important;
+    white-space: nowrap !important;
   }
+} /* ← ここ！ここでスマホ用設定(@media)を終了させる */
+
+/* ここから下は @media の外側（PC・スマホ共通）に置く必要があります */
 
 /* =========================================
    案1：ドラッグ移動付きフロート表示用CSS
    ========================================= */
-
-/* 通常時は非表示のプレースホルダー（映像が抜けた穴を埋める） */
 #video-placeholder {
   width: 100%;
   display: none; 
 }
 
-/* フロートモード（スクロールで発動） */
 #video-container.is-floating {
   position: fixed !important;
-  /* 初期位置: 右下 */
   bottom: 20px;
   right: 20px;
-  
-  /* サイズ調整: 画面幅の45%くらい */
   width: 45vw !important;
   height: auto !important;
-  
-  /* ドラッグ時の動きを滑らかにしつつ、操作中は遅れないようにJSで制御 */
   z-index: 9999;
   box-shadow: 0 4px 15px rgba(0,0,0,0.5);
   border-radius: 12px;
   border: 2px solid #fff;
   background: #000;
-  
-  /* 形を崩さない */
   aspect-ratio: 16 / 9;
-
   touch-action: none;
 }
 
-/* 中身も追従させる */
 #video-container.is-floating video,
 #video-container.is-floating canvas {
   width: 100% !important;
@@ -422,50 +413,36 @@ font-weight: normal;
 }
 
 /* =========================================
-   ミニプレーヤーの「閉じるボタン」スタイル (修正版：内側配置)
+   ミニプレーヤーの「閉じるボタン」スタイル
    ========================================= */
 #close-float-btn {
-  display: none; /* 通常時は非表示 */
-  
+  display: none;
   position: absolute;
-  /* ★修正：枠の内側に配置（画面端で切れないようにする） */
   top: 8px;
   right: 8px;
   z-index: 99999;
-
-  /* サイズと形 */
-  width: 32px;       /* 少し控えめなサイズに */
+  width: 32px;
   height: 32px;
   border-radius: 50%;
-  
-  /* デザイン：動画の上に載るので半透明の黒背景にする */
   background-color: rgba(0, 0, 0, 0.6); 
   color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.8); /* 白い細い枠線 */
-  box-shadow: 0 2px 4px rgba(0,0,0,0.3);      /* 影 */
-
-  /* 文字設定 */
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
   font-size: 20px;
   font-family: Arial, sans-serif;
   line-height: 1;
   padding: 0;
   cursor: pointer;
-  
-  /* 中央揃え */
   align-items: center;
   justify-content: center;
-  
-  /* タップ領域の最適化 */
   touch-action: manipulation;
 }
 
-/* 押した時のリアクション */
 #close-float-btn:active {
-  background-color: rgba(255, 50, 50, 0.8); /* 押すと赤っぽくなる */
+  background-color: rgba(255, 50, 50, 0.8);
   transform: scale(0.95);
 }
 
-/* ミニプレーヤー化した時だけボタンを表示 */
 #video-container.is-floating #close-float-btn {
   display: flex; 
 }
