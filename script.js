@@ -4,7 +4,7 @@
 
 const UI_CATS = ['car','bus','truck','motorcycle','bicycle','person'];
 const VEHICLE_CATS = ['car','bus','truck','motorcycle','bicycle'];
-a
+
 // DOM
 const DOM = {
   videoContainer: document.getElementById("video-container"),
@@ -992,7 +992,13 @@ function filterDetectionsByMode(rawDets){
   return vehicles;
 }
 
-/* ========= 初期化 ========= */
+/* ========= 不足していたプログレスバー更新関数を追加 ========= */
+function progressFake(percent){
+  if(DOM.loadingProg) DOM.loadingProg.value = percent;
+  if(DOM.loadingPerc) DOM.loadingPerc.textContent = percent + "%";
+}
+
+/* ========= 初期化 (スマホ対策修正版) ========= */
 window.addEventListener("load", init);
 
 async function init(){
@@ -1003,11 +1009,25 @@ async function init(){
 
     applyModeUiState();
     setupSettingItemHelpPopups();
+    
+    // ▼▼▼ 追加：スマホのメモリ不足によるフリーズ防止設定 ▼▼▼
+    tf.env().set('WEBGL_PACK', false);
+    tf.env().set('WEBGL_CONV_IM2COL', false);
+
     progressFake(5);
+    
+    // TensorFlow.js の準備
     await tf.ready();
 
+    // バックエンド確認と強制設定
+    if(tf.getBackend() !== 'webgl'){
+       try{ await tf.setBackend('webgl'); }catch(e){ console.warn(e); }
+    }
+
     progressFake(35);
-    model = await cocoSsd.load();
+    
+    // ▼▼▼ 変更：軽量版モデル(lite_mobilenet_v2)を指定して読み込む ▼▼▼
+    model = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
 
     progressFake(100);
     setTimeout(()=>DOM.status.classList.add("hidden"), 500);
@@ -1026,27 +1046,25 @@ async function init(){
     mainRenderLoop();
 
     DOM.toggleBtn.disabled = false;
-}catch(err){
+    
+  }catch(err){
     console.error(err);
-
-    // エラーメッセージを文字列化してチェック
     const errStr = String(err?.message || err || "");
     let userMsg = `${errStr}`;
 
-    // よくあるエラー（権限拒否）の場合は、具体的な日本語メッセージにする
     if(errStr.includes("Permission denied") || errStr.includes("NotAllowedError")){
-      userMsg = "カメラの利用が許可されていません";
+      userMsg = "カメラの利用が許可されていません。";
     } else if(errStr.includes("device") || errStr.includes("found")){
-      userMsg = "カメラが見つかりません";
+      userMsg = "カメラが見つかりません。";
+    } else if(errStr.includes("WebGL")){
+      userMsg = "AIの起動に失敗しました(WebGLエラー)";
     }
 
-    // ヘルプ風の画面ではなく、位置情報エラーと同じ「赤色のトースト」で表示
     toast(userMsg, true);
+    
+    const loadingText = document.getElementById("loading-model");
+    if(loadingText) loadingText.textContent = "起動エラー";
   }
-}
-function progressFake(v){
-  DOM.loadingPerc.textContent = `${v}%`;
-  DOM.loadingProg.value = v;
 }
 
 /* ========= イベント ========= */
