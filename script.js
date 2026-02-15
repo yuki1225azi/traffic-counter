@@ -2042,95 +2042,100 @@ function formatTimestamp(d){
 })();
 
 /* =========================================
-   スクロール連動：ミニプレーヤー化 ＆ ドラッグ移動 ＆ 閉じるボタン (完成版)
+   スクロール連動：ミニプレーヤー化 ＆ ドラッグ移動 ＆ 閉じるボタン (修正版)
    ========================================= */
 (function floatingPlayerPatch(){
   const container = document.getElementById("video-container");
   if(!container) return;
 
   // 1. 閉じるボタンの挙動設定
-  const closeBtn = document.getElementById("close-float-btn");
-  let isClosedManually = false; // 「手動で閉じた」フラグ
+  // HTMLに追加したボタンを取得
+  const closeBtn = document.getElementById("close-float-btn"); 
+  let isClosedManually = false; // 手動で閉じたかどうかのフラグ
 
   if(closeBtn){
-    // クリックされたら閉じる
+    // ボタンクリック時の動作
     closeBtn.addEventListener("click", (e)=>{
       e.preventDefault();
-      e.stopPropagation(); // コンテナ自体のクリックイベント（トップへ戻る）を邪魔しないように
-      disableFloating();   // フロート解除
-      isClosedManually = true; // 「今は閉じたい気分なんだな」と記録
+      e.stopPropagation(); // 親要素へのイベント伝播を止める（ドラッグ開始などを防ぐ）
+      
+      disableFloating();   // フロート解除関数を呼ぶ
+      isClosedManually = true; // 「手動で閉じた」ことにする（スクロールしても再出現しないように）
     });
     
-    // ドラッグ誤作動防止
+    // ボタン上でのドラッグ誤作動防止
     closeBtn.addEventListener("pointerdown", (e)=> e.stopPropagation());
+    closeBtn.addEventListener("touchstart", (e)=> e.stopPropagation());
   }
 
-  // Helper: フロート解除処理
+  // Helper: フロート解除処理（共通化）
   function disableFloating(){
     container.classList.remove("is-floating");
+    
     const ph = document.getElementById("video-placeholder");
     if(ph) ph.style.display = "none";
     
-    // 位置リセット
+    // スタイルをリセットして元の位置に戻す
     container.style.transform = "";
     container.style.left = "";
     container.style.top = "";
     container.style.bottom = "";
     container.style.right = "";
     container.style.width = "";
+    container.style.height = "";
+    
+    // 元の場所へスクロールして戻る（親切設計）
+    container.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
-  // 2. プレースホルダー（穴埋め役）
-  const placeholder = document.createElement("div");
-  placeholder.id = "video-placeholder";
-  placeholder.style.display = "none";
-  placeholder.style.width = "100%";
-  container.parentNode.insertBefore(placeholder, container);
+  // 2. プレースホルダー（動画が抜けた穴を埋める要素）
+  let placeholder = document.getElementById("video-placeholder");
+  if(!placeholder){
+    placeholder = document.createElement("div");
+    placeholder.id = "video-placeholder";
+    placeholder.style.display = "none";
+    placeholder.style.width = "100%";
+    container.parentNode.insertBefore(placeholder, container);
+  }
 
-  // 3. 監視マーカー（ここを通り過ぎたら発動）
-  const sentinel = document.createElement("div");
-  sentinel.id = "video-sentinel";
-  sentinel.style.height = "1px";
-  sentinel.style.width = "100%";
-  sentinel.style.marginTop = "-1px";
-  sentinel.style.visibility = "hidden";
-  sentinel.style.pointerEvents = "none";
-  container.parentNode.insertBefore(sentinel, container.nextSibling);
+  // 3. 監視マーカー（ここを通過したらPinPにする）
+  let sentinel = document.getElementById("video-sentinel");
+  if(!sentinel){
+    sentinel = document.createElement("div");
+    sentinel.id = "video-sentinel";
+    sentinel.style.height = "1px";
+    sentinel.style.width = "100%";
+    sentinel.style.marginTop = "-1px";
+    sentinel.style.visibility = "hidden";
+    sentinel.style.pointerEvents = "none";
+    container.parentNode.insertBefore(sentinel, container.nextSibling);
+  }
 
   // 4. スクロール監視
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
-      // プレースホルダーの高さを同期
+      // プレースホルダーの高さを動画枠に合わせる
       if(container.offsetHeight > 0 && !container.classList.contains("is-floating")){
          placeholder.style.height = container.offsetHeight + "px";
       }
 
-      // --- 画面外（上）に消えた時 ---
+      // 画面上部に消えたらPinP化
       if (!entry.isIntersecting && entry.boundingClientRect.top < 0) {
-        
-        // ★「手動で閉じていない」場合だけフロートさせる
         if (!isClosedManually && !container.classList.contains("is-floating")) {
           placeholder.style.display = "block"; 
           container.classList.add("is-floating");
-          
-          // 右下に配置
-          container.style.transform = ""; 
-          container.style.left = ""; 
-          container.style.top = "";
+          // 初期位置
           container.style.bottom = "20px";
           container.style.right = "20px";
-          container.style.width = "45vw"; 
+          container.style.width = "45vw"; // スマホ向けサイズ
         }
-
       } else {
-        // --- 画面内に戻ってきた時（上に戻った時） ---
-        
-        // ★ここでフラグをリセット！
-        // 一旦上に戻れば、また次にスクロールした時にフロートするようになる
-        isClosedManually = false;
-
+        // 画面内に戻ってきたら解除
+        isClosedManually = false; // フラグ見直し
         if (container.classList.contains("is-floating")) {
-          disableFloating();
+          disableFloating(); // ここではスクロールバック不要なので関数内のscrollIntoViewは呼ばれるが、既に画面内なので問題なし
+          // ただしスクロールバックしたくない場合は disableFloatingの中のscrollIntoViewを条件分岐する等の調整が可能
+          // 今回はシンプルに呼んでおく
         }
       }
     });
@@ -2138,54 +2143,53 @@ function formatTimestamp(d){
 
   observer.observe(sentinel);
 
-  // 5. ドラッグ移動ロジック
+  // 5. ドラッグ移動ロジック (Pointer Eventsで一本化)
   let isDragging = false;
   let startX, startY, initialLeft, initialTop;
 
-  container.addEventListener("touchstart", (e) => {
+  container.addEventListener("pointerdown", (e) => {
     if (!container.classList.contains("is-floating")) return;
-    if(e.target === closeBtn) return; // ボタンを押した時はドラッグしない
+    // 閉じるボタンの上ならドラッグしない
+    if (e.target === closeBtn || closeBtn.contains(e.target)) return;
 
     e.preventDefault(); 
     isDragging = true;
     
-    const touch = e.touches[0];
-    startX = touch.clientX;
-    startY = touch.clientY;
+    startX = e.clientX;
+    startY = e.clientY;
 
     const rect = container.getBoundingClientRect();
     initialLeft = rect.left;
     initialTop = rect.top;
     
-    // 固定配置から座標配置へ切り替え
+    // 固定配置から絶対配置へ切り替え
     container.style.bottom = "auto";
     container.style.right = "auto";
     container.style.left = initialLeft + "px";
     container.style.top = initialTop + "px";
     container.style.width = rect.width + "px"; 
-  }, { passive: false });
+    
+    try{ container.setPointerCapture(e.pointerId); }catch(_){}
+  });
 
-  window.addEventListener("touchmove", (e) => {
+  container.addEventListener("pointermove", (e) => {
     if (!isDragging) return;
     e.preventDefault();
-    const touch = e.touches[0];
-    const dx = touch.clientX - startX;
-    const dy = touch.clientY - startY;
+
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
     container.style.left = `${initialLeft + dx}px`;
     container.style.top = `${initialTop + dy}px`;
-  }, { passive: false });
+  });
 
-  window.addEventListener("touchend", () => {
+  const stopDrag = (e) => {
+    if(!isDragging) return;
     isDragging = false;
-  });
+    try{ container.releasePointerCapture(e.pointerId); }catch(_){}
+  };
 
-  // 6. クリックでトップへ戻る（ボタン以外を押した時）
-  container.addEventListener("click", (e) => {
-    if(e.target === closeBtn) return;
-
-    if (container.classList.contains("is-floating") && !isDragging) {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  });
+  container.addEventListener("pointerup", stopDrag);
+  container.addEventListener("pointercancel", stopDrag);
 
 })();
