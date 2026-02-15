@@ -418,3 +418,37 @@ font-weight: normal;
   height: 100% !important;
   border-radius: 10px;
 }
+
+/* =========================================
+   ミニプレーヤーの「閉じるボタン」スタイル
+   ========================================= */
+#close-float-btn {
+  display: none; /* 最初は隠しておく */
+  
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 30px;
+  height: 30px;
+  
+  background-color: #333; /* 黒背景 */
+  color: #fff;            /* 白文字 */
+  border: 2px solid #fff; /* 白いフチ */
+  border-radius: 50%;     /* 丸くする */
+  
+  font-size: 20px;
+  font-weight: bold;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 10001; /* 映像より手前に */
+  
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+}
+
+/* ミニプレーヤー化した時だけボタンを表示 */
+#video-container.is-floating #close-float-btn {
+  display: flex; 
+}
