@@ -501,40 +501,43 @@ function saveRoi(){
   try{ localStorage.setItem(LS_KEY_ROI, JSON.stringify(ROI_NORM)); }catch(_e){}
 }
 
-/* ========= ROI操作（1秒ロック維持・高速追従版） ========= */
+/* ========= ROI操作（スクロールラグ解消版） ========= */
 function setupRoiDrag(){
   const c = DOM.canvas;
   if(!c) return;
 
-  // 初期状態：縦スクロールは許可
-  // (ドラッグ開始時に動的に "none" に切り替える)
   c.style.touchAction = "pan-y";
-
   let dragging = false;
   let dragIndex = -1;
-  let dragCache = null; // 高速化用キャッシュ
-  let lockTimer = null; // 1秒ルール用タイマー
+  let dragCache = null;
+  let lockTimer = null;
 
-  // 判定範囲
   const TOUCH_HIT_RADIUS_PX = 40; 
   const MOUSE_HIT_RADIUS_PX = 20;
 
-  // ■ロック制御：操作開始でスクロール禁止、離しても1秒間は禁止維持
   const activateScrollLock = () => {
     if(lockTimer) clearTimeout(lockTimer);
-    c.style.touchAction = "none"; // 強制スクロール禁止
+    c.style.touchAction = "none"; // スクロール不可に設定
   };
 
-  const scheduleScrollUnlock = () => {
+  const scheduleScrollUnlock = (isTouch) => {
     if(lockTimer) clearTimeout(lockTimer);
-    // 1秒後にスクロール許可に戻す
-    lockTimer = setTimeout(() => {
+    const delay = isTouch ? 1000 : 0;
+    if (delay > 0) {
+      lockTimer = setTimeout(() => {
+        c.classList.remove("roi-active");
+        c.style.touchAction = "pan-y"; // スクロール可に戻す
+        saveRoi();
+        lockTimer = null;
+      }, delay);
+    } else {
+      c.classList.remove("roi-active");
       c.style.touchAction = "pan-y";
+      saveRoi();
       lockTimer = null;
-    }, 1000);
+    }
   };
 
-  // キャッシュ作成（ドラッグ開始時のみ実行）
   const createCache = (ev) => {
     const rect = c.getBoundingClientRect();
     const cw = c.width  || 1;
@@ -547,34 +550,55 @@ function setupRoiDrag(){
     return { rect, scale, contentW, contentH, offsetX, offsetY, cw, ch };
   };
 
+  // ★改良：スクロール判定を「最速」で止めるための前処理
+  const preventScrollOnHit = (ev) => {
+    if (isAnalyzing || window.roiLocked === true) return;
+    
+    // 1. スティッキー期間中（すでにオレンジ線）なら即座にスクロールを殺す
+    if (c.classList.contains("roi-active") && ev.cancelable) {
+      ev.preventDefault();
+      return;
+    }
+
+    // 2. 最初の接触時、ヒット判定を行い、当たっていれば即座にスクロールを殺す
+    const rect = c.getBoundingClientRect();
+    const cw = c.width || 1;
+    const scale = Math.min(rect.width / cw, c.height / (c.height * (rect.width / cw)));
+    const offsetX = (rect.width - (cw * scale)) / 2;
+    const offsetY = (rect.height - (c.height * scale)) / 2;
+    
+    const xIn = ev.clientX - rect.left - offsetX;
+    const yIn = ev.clientY - rect.top - offsetY;
+    const p = { x: xIn / scale, y: yIn / scale };
+    
+    const pts = getRoiPx(); 
+    const isTouch = (ev.pointerType === 'touch' || ev.type.startsWith('touch'));
+    const HIT_RADIUS = (isTouch ? TOUCH_HIT_RADIUS_PX : MOUSE_HIT_RADIUS_PX) / scale;
+
+    const isHit = pts.some(pt => Math.sqrt((p.x - pt.x)**2 + (p.y - pt.y)**2) <= HIT_RADIUS);
+    
+    if (isHit && ev.cancelable) {
+      ev.preventDefault(); // これが実行されるとブラウザのスクロールスレッドが停止する
+    }
+  };
+
   const startDrag = (ev)=>{
     if(isAnalyzing || window.roiLocked === true) return;
     if(DOM.videoContainer && DOM.videoContainer.classList.contains("is-floating")) return;
 
-    // ★重要：1秒ロック期間中なら、触った瞬間にブラウザ動作を止める
-    // これにより「連続タップでの微調整」が劇的にスムーズになる
-    if(c.style.touchAction === "none" && ev.cancelable){
-      ev.preventDefault();
-    }
-
-    const cache = createCache(ev); // 計算用キャッシュ作成
+    // スクロールロック中、または今回ヒットした場合は即座にイベントを独占
+    const cache = createCache(ev);
     const { rect, scale, contentW, contentH, offsetX, offsetY } = cache;
-
-    // タッチ位置の計算
     const xIn = ev.clientX - rect.left - offsetX;
     const yIn = ev.clientY - rect.top  - offsetY;
-
-    // Canvas内部座標へ変換
     const p = { 
       x: Math.max(0, Math.min(contentW, xIn)) / scale, 
       y: Math.max(0, Math.min(contentH, yIn)) / scale 
     };
 
-    // ヒット判定
     const pts = getRoiPx(); 
     const isTouch = (ev.pointerType === 'touch' || ev.pointerType === 'pen');
-    const visualRadius = isTouch ? TOUCH_HIT_RADIUS_PX : MOUSE_HIT_RADIUS_PX;
-    const HIT_RADIUS = visualRadius / cache.scale;
+    const HIT_RADIUS = (isTouch ? TOUCH_HIT_RADIUS_PX : MOUSE_HIT_RADIUS_PX) / scale;
 
     let closestIdx = -1;
     let minDistance = Infinity;
@@ -588,33 +612,25 @@ function setupRoiDrag(){
     });
 
     if(closestIdx !== -1){
+      if(ev.cancelable) ev.preventDefault(); // ドラッグ開始を確定
       dragging = true;
       dragIndex = closestIdx;
       dragCache = cache; 
-      
       c.classList.add("roi-active"); 
-      activateScrollLock(); // ★操作中はスクロール禁止
-
+      activateScrollLock(); 
       ev.stopImmediatePropagation();
-      if(ev.cancelable) ev.preventDefault();
-
-      // ★重要：高速移動しても指を離さないためのキャプチャ
       try{ c.setPointerCapture(ev.pointerId); }catch(_e){}
     }
   };
 
   const moveDrag = (ev)=>{
     if(!dragging || dragIndex === -1 || !dragCache) return;
-    
-    // ドラッグ中はブラウザイベントを完全ブロック
     if(ev.cancelable) ev.preventDefault();
     ev.stopImmediatePropagation();
 
     const { rect, scale, contentW, contentH, offsetX, offsetY, cw, ch } = dragCache;
-
     const xIn = ev.clientX - rect.left - offsetX;
     const yIn = ev.clientY - rect.top  - offsetY;
-
     const xClamped = Math.max(0, Math.min(contentW, xIn));
     const yClamped = Math.max(0, Math.min(contentH, yIn));
 
@@ -629,33 +645,17 @@ function setupRoiDrag(){
     dragging = false;
     dragIndex = -1;
     dragCache = null;
-
-    // ポインタの種類（touchかmouseか）で待機時間を変える
     const isTouch = (ev.pointerType === 'touch' || ev.pointerType === 'pen');
-    const delay = isTouch ? 1000 : 0; // スマホは1秒、PCは0秒（即時）
-
-    if(lockTimer) clearTimeout(lockTimer);
-
-    if (delay > 0) {
-      // ★スマホ：1秒間アクティブ状態を維持
-      lockTimer = setTimeout(() => {
-        c.classList.remove("roi-active");
-        c.style.touchAction = "pan-y";
-        saveRoi();
-        lockTimer = null;
-      }, delay);
-    } else {
-      // ★PC：即座に解除
-      c.classList.remove("roi-active");
-      c.style.touchAction = "pan-y";
-      saveRoi();
-      lockTimer = null;
-    }
-
     try{ c.releasePointerCapture(ev.pointerId); }catch(_e){}
+    scheduleScrollUnlock(isTouch);
   };
 
-  c.addEventListener("pointerdown", startDrag, { passive: false });
+  // ★重要：pointerdownより先に反応する pointerover / touchstart を活用してラグを殺す
+  c.addEventListener("pointerdown", (e) => {
+    preventScrollOnHit(e); // 判定
+    startDrag(e);          // 処理
+  }, { passive: false });
+
   c.addEventListener("pointermove", moveDrag, { passive: false });
   c.addEventListener("pointerup", endDrag);
   c.addEventListener("pointercancel", endDrag);
