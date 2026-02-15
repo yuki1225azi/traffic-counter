@@ -2084,8 +2084,6 @@ function formatTimestamp(d){
     container.style.width = "";
     container.style.height = "";
     
-    // 元の場所へスクロールして戻る（親切設計）
-    container.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   // 2. プレースホルダー（動画が抜けた穴を埋める要素）
