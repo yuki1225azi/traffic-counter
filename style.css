@@ -411,6 +411,8 @@ font-weight: normal;
   aspect-ratio: 16 / 9;
 }
 
+touch-action: none;
+
 /* 中身も追従させる */
 #video-container.is-floating video,
 #video-container.is-floating canvas {
