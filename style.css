@@ -409,9 +409,9 @@ font-weight: normal;
   
   /* 形を崩さない */
   aspect-ratio: 16 / 9;
-}
 
-touch-action: none;
+  touch-action: none;
+}
 
 /* 中身も追従させる */
 #video-container.is-floating video,
@@ -419,6 +419,8 @@ touch-action: none;
   width: 100% !important;
   height: 100% !important;
   border-radius: 10px;
+
+  pointer-events: none;
 }
 
 /* =========================================
