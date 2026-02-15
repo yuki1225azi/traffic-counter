@@ -506,7 +506,7 @@ function setupRoiDrag(){
   const c = DOM.canvas;
   if(!c) return;
 
-  c.style.touchAction = "pan-y"; // 初期状態
+  c.style.touchAction = "pan-y"; // 初期状態：縦スクロール許可
   let dragging = false;
   let dragIndex = -1;
   let dragCache = null;
@@ -517,7 +517,7 @@ function setupRoiDrag(){
 
   const activateScrollLock = () => {
     if(lockTimer) clearTimeout(lockTimer);
-    c.style.touchAction = "none"; 
+    c.style.touchAction = "none"; // 強制スクロール禁止
   };
 
   const scheduleScrollUnlock = (isTouch) => {
@@ -526,7 +526,7 @@ function setupRoiDrag(){
     if (delay > 0) {
       lockTimer = setTimeout(() => {
         c.classList.remove("roi-active");
-        c.style.touchAction = "pan-y";
+        c.style.touchAction = "pan-y"; // スクロール許可に戻す
         saveRoi();
         lockTimer = null;
       }, delay);
@@ -538,7 +538,7 @@ function setupRoiDrag(){
     }
   };
 
-  // ★改良：高速ヒット判定（引数に生の座標を渡せるように分離）
+  // ★改良：最速で当たり判定を行うためのヘルパー
   const checkHit = (clientX, clientY, isTouch) => {
     const rect = c.getBoundingClientRect();
     const cw = c.width || 1;
@@ -566,21 +566,21 @@ function setupRoiDrag(){
     return { index: closestIdx, rect, scale, offsetX, offsetY };
   };
 
-  // ★最重要：ラグを殺すための先行イベント処理
+  // ★最重要：ブラウザのスクロール判断を「先回り」して止める処理
   const handleFastInterrupt = (e) => {
     if (isAnalyzing || window.roiLocked === true) return;
     
-    // すでにオレンジ線の期間中なら即座にスクロールを殺す
+    // オレンジ線の期間中なら無条件でスクロール停止
     if (c.classList.contains("roi-active") && e.cancelable) {
       e.preventDefault();
       return;
     }
 
-    // 指が触れた瞬間の座標を取得
+    // 触れた瞬間の座標で当たり判定
     const touch = e.touches ? e.touches[0] : e;
     const hit = checkHit(touch.clientX, touch.clientY, !!e.touches);
 
-    // 四隅の判定範囲内であれば、ブラウザがスクロールを開始する前に強制停止
+    // 四隅のどこかに当たっていれば、即座にスクロールスレッドを殺す
     if (hit.index !== -1 && e.cancelable) {
       e.preventDefault();
     }
@@ -594,11 +594,11 @@ function setupRoiDrag(){
     const hit = checkHit(ev.clientX, ev.clientY, isTouch);
 
     if(hit.index !== -1){
+      // ドラッグ開始を確定（ここでも一応呼ぶ）
       if(ev.cancelable) ev.preventDefault();
       
       dragging = true;
       dragIndex = hit.index;
-      // 移動中に再計算しなくて済むようキャッシュを保持
       dragCache = { 
         rect: hit.rect, scale: hit.scale, 
         offsetX: hit.offsetX, offsetY: hit.offsetY,
