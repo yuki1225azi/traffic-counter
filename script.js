@@ -501,12 +501,12 @@ function saveRoi(){
   try{ localStorage.setItem(LS_KEY_ROI, JSON.stringify(ROI_NORM)); }catch(_e){}
 }
 
-/* ========= ROI操作（スクロールラグ解消版） ========= */
+/* ========= ROI操作（スクロールラグ完全解消版） ========= */
 function setupRoiDrag(){
   const c = DOM.canvas;
   if(!c) return;
 
-  c.style.touchAction = "pan-y";
+  c.style.touchAction = "pan-y"; // 初期状態
   let dragging = false;
   let dragIndex = -1;
   let dragCache = null;
@@ -517,7 +517,7 @@ function setupRoiDrag(){
 
   const activateScrollLock = () => {
     if(lockTimer) clearTimeout(lockTimer);
-    c.style.touchAction = "none"; // スクロール不可に設定
+    c.style.touchAction = "none"; 
   };
 
   const scheduleScrollUnlock = (isTouch) => {
@@ -526,7 +526,7 @@ function setupRoiDrag(){
     if (delay > 0) {
       lockTimer = setTimeout(() => {
         c.classList.remove("roi-active");
-        c.style.touchAction = "pan-y"; // スクロール可に戻す
+        c.style.touchAction = "pan-y";
         saveRoi();
         lockTimer = null;
       }, delay);
@@ -538,47 +538,51 @@ function setupRoiDrag(){
     }
   };
 
-  const createCache = (ev) => {
+  // ★改良：高速ヒット判定（引数に生の座標を渡せるように分離）
+  const checkHit = (clientX, clientY, isTouch) => {
     const rect = c.getBoundingClientRect();
-    const cw = c.width  || 1;
+    const cw = c.width || 1;
     const ch = c.height || 1;
     const scale = Math.min(rect.width / cw, rect.height / ch);
-    const contentW = cw * scale;
-    const contentH = ch * scale;
-    const offsetX = (rect.width  - contentW) / 2;
-    const offsetY = (rect.height - contentH) / 2;
-    return { rect, scale, contentW, contentH, offsetX, offsetY, cw, ch };
+    const offsetX = (rect.width - (cw * scale)) / 2;
+    const offsetY = (rect.height - (ch * scale)) / 2;
+    
+    const xIn = (clientX - rect.left - offsetX) / scale;
+    const yIn = (clientY - rect.top - offsetY) / scale;
+    
+    const pts = getRoiPx(); 
+    const radius = (isTouch ? TOUCH_HIT_RADIUS_PX : MOUSE_HIT_RADIUS_PX) / scale;
+
+    let closestIdx = -1;
+    let minDistance = Infinity;
+
+    pts.forEach((pt, i) => {
+      const dist = Math.sqrt((xIn - pt.x)**2 + (yIn - pt.y)**2);
+      if(dist <= radius && dist < minDistance){
+        minDistance = dist;
+        closestIdx = i;
+      }
+    });
+    return { index: closestIdx, rect, scale, offsetX, offsetY };
   };
 
-  // ★改良：スクロール判定を「最速」で止めるための前処理
-  const preventScrollOnHit = (ev) => {
+  // ★最重要：ラグを殺すための先行イベント処理
+  const handleFastInterrupt = (e) => {
     if (isAnalyzing || window.roiLocked === true) return;
     
-    // 1. スティッキー期間中（すでにオレンジ線）なら即座にスクロールを殺す
-    if (c.classList.contains("roi-active") && ev.cancelable) {
-      ev.preventDefault();
+    // すでにオレンジ線の期間中なら即座にスクロールを殺す
+    if (c.classList.contains("roi-active") && e.cancelable) {
+      e.preventDefault();
       return;
     }
 
-    // 2. 最初の接触時、ヒット判定を行い、当たっていれば即座にスクロールを殺す
-    const rect = c.getBoundingClientRect();
-    const cw = c.width || 1;
-    const scale = Math.min(rect.width / cw, c.height / (c.height * (rect.width / cw)));
-    const offsetX = (rect.width - (cw * scale)) / 2;
-    const offsetY = (rect.height - (c.height * scale)) / 2;
-    
-    const xIn = ev.clientX - rect.left - offsetX;
-    const yIn = ev.clientY - rect.top - offsetY;
-    const p = { x: xIn / scale, y: yIn / scale };
-    
-    const pts = getRoiPx(); 
-    const isTouch = (ev.pointerType === 'touch' || ev.type.startsWith('touch'));
-    const HIT_RADIUS = (isTouch ? TOUCH_HIT_RADIUS_PX : MOUSE_HIT_RADIUS_PX) / scale;
+    // 指が触れた瞬間の座標を取得
+    const touch = e.touches ? e.touches[0] : e;
+    const hit = checkHit(touch.clientX, touch.clientY, !!e.touches);
 
-    const isHit = pts.some(pt => Math.sqrt((p.x - pt.x)**2 + (p.y - pt.y)**2) <= HIT_RADIUS);
-    
-    if (isHit && ev.cancelable) {
-      ev.preventDefault(); // これが実行されるとブラウザのスクロールスレッドが停止する
+    // 四隅の判定範囲内であれば、ブラウザがスクロールを開始する前に強制停止
+    if (hit.index !== -1 && e.cancelable) {
+      e.preventDefault();
     }
   };
 
@@ -586,36 +590,21 @@ function setupRoiDrag(){
     if(isAnalyzing || window.roiLocked === true) return;
     if(DOM.videoContainer && DOM.videoContainer.classList.contains("is-floating")) return;
 
-    // スクロールロック中、または今回ヒットした場合は即座にイベントを独占
-    const cache = createCache(ev);
-    const { rect, scale, contentW, contentH, offsetX, offsetY } = cache;
-    const xIn = ev.clientX - rect.left - offsetX;
-    const yIn = ev.clientY - rect.top  - offsetY;
-    const p = { 
-      x: Math.max(0, Math.min(contentW, xIn)) / scale, 
-      y: Math.max(0, Math.min(contentH, yIn)) / scale 
-    };
-
-    const pts = getRoiPx(); 
     const isTouch = (ev.pointerType === 'touch' || ev.pointerType === 'pen');
-    const HIT_RADIUS = (isTouch ? TOUCH_HIT_RADIUS_PX : MOUSE_HIT_RADIUS_PX) / scale;
+    const hit = checkHit(ev.clientX, ev.clientY, isTouch);
 
-    let closestIdx = -1;
-    let minDistance = Infinity;
-
-    pts.forEach((pt, i) => {
-      const dist = Math.sqrt((p.x - pt.x)**2 + (p.y - pt.y)**2);
-      if(dist <= HIT_RADIUS && dist < minDistance){
-        minDistance = dist;
-        closestIdx = i;
-      }
-    });
-
-    if(closestIdx !== -1){
-      if(ev.cancelable) ev.preventDefault(); // ドラッグ開始を確定
+    if(hit.index !== -1){
+      if(ev.cancelable) ev.preventDefault();
+      
       dragging = true;
-      dragIndex = closestIdx;
-      dragCache = cache; 
+      dragIndex = hit.index;
+      // 移動中に再計算しなくて済むようキャッシュを保持
+      dragCache = { 
+        rect: hit.rect, scale: hit.scale, 
+        offsetX: hit.offsetX, offsetY: hit.offsetY,
+        cw: c.width, ch: c.height 
+      };
+      
       c.classList.add("roi-active"); 
       activateScrollLock(); 
       ev.stopImmediatePropagation();
@@ -628,11 +617,9 @@ function setupRoiDrag(){
     if(ev.cancelable) ev.preventDefault();
     ev.stopImmediatePropagation();
 
-    const { rect, scale, contentW, contentH, offsetX, offsetY, cw, ch } = dragCache;
-    const xIn = ev.clientX - rect.left - offsetX;
-    const yIn = ev.clientY - rect.top  - offsetY;
-    const xClamped = Math.max(0, Math.min(contentW, xIn));
-    const yClamped = Math.max(0, Math.min(contentH, yIn));
+    const { rect, scale, offsetX, offsetY, cw, ch } = dragCache;
+    const xClamped = Math.max(0, Math.min(cw * scale, ev.clientX - rect.left - offsetX));
+    const yClamped = Math.max(0, Math.min(ch * scale, ev.clientY - rect.top - offsetY));
 
     ROI_NORM[dragIndex] = {
       x: Math.max(0, Math.min(1, (xClamped / scale) / cw)),
@@ -650,12 +637,9 @@ function setupRoiDrag(){
     scheduleScrollUnlock(isTouch);
   };
 
-  // ★重要：pointerdownより先に反応する pointerover / touchstart を活用してラグを殺す
-  c.addEventListener("pointerdown", (e) => {
-    preventScrollOnHit(e); // 判定
-    startDrag(e);          // 処理
-  }, { passive: false });
-
+  // スマホのスクロールラグを殺すため touchstart を先行させる
+  c.addEventListener("touchstart", handleFastInterrupt, { passive: false });
+  c.addEventListener("pointerdown", startDrag, { passive: false });
   c.addEventListener("pointermove", moveDrag, { passive: false });
   c.addEventListener("pointerup", endDrag);
   c.addEventListener("pointercancel", endDrag);
