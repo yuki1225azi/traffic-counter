@@ -629,14 +629,30 @@ function setupRoiDrag(){
     dragging = false;
     dragIndex = -1;
     dragCache = null;
-    
-    c.classList.remove("roi-active");
+
+    // ポインタの種類（touchかmouseか）で待機時間を変える
+    const isTouch = (ev.pointerType === 'touch' || ev.pointerType === 'pen');
+    const delay = isTouch ? 1000 : 0; // スマホは1秒、PCは0秒（即時）
+
+    if(lockTimer) clearTimeout(lockTimer);
+
+    if (delay > 0) {
+      // ★スマホ：1秒間アクティブ状態を維持
+      lockTimer = setTimeout(() => {
+        c.classList.remove("roi-active");
+        c.style.touchAction = "pan-y";
+        saveRoi();
+        lockTimer = null;
+      }, delay);
+    } else {
+      // ★PC：即座に解除
+      c.classList.remove("roi-active");
+      c.style.touchAction = "pan-y";
+      saveRoi();
+      lockTimer = null;
+    }
+
     try{ c.releasePointerCapture(ev.pointerId); }catch(_e){}
-    
-    saveRoi();
-    
-    // ★指を離してもすぐにはスクロール許可しない（1秒待機）
-    scheduleScrollUnlock();
   };
 
   c.addEventListener("pointerdown", startDrag, { passive: false });
