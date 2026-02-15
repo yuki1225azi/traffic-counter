@@ -4,7 +4,7 @@
 
 const UI_CATS = ['car','bus','truck','motorcycle','bicycle','person'];
 const VEHICLE_CATS = ['car','bus','truck','motorcycle','bicycle'];
-
+a
 // DOM
 const DOM = {
   videoContainer: document.getElementById("video-container"),
@@ -2049,33 +2049,32 @@ function formatTimestamp(d){
   if(!container) return;
 
   // 1. 閉じるボタンの挙動設定
-  // HTMLに追加したボタンを取得
   const closeBtn = document.getElementById("close-float-btn"); 
-  let isClosedManually = false; // 手動で閉じたかどうかのフラグ
+  let isClosedManually = false;
 
   if(closeBtn){
-    // ボタンクリック時の動作
+    // ★追加: ボタン自体は pointer-events を有効にする
+    // (CSSで canvas に pointer-events: none をかけたため、ボタンだけ操作可能にする)
+    closeBtn.style.pointerEvents = "auto";
+
     closeBtn.addEventListener("click", (e)=>{
       e.preventDefault();
-      e.stopPropagation(); // 親要素へのイベント伝播を止める（ドラッグ開始などを防ぐ）
-      
-      disableFloating();   // フロート解除関数を呼ぶ
-      isClosedManually = true; // 「手動で閉じた」ことにする（スクロールしても再出現しないように）
+      e.stopPropagation();
+      disableFloating();
+      isClosedManually = true;
     });
     
-    // ボタン上でのドラッグ誤作動防止
     closeBtn.addEventListener("pointerdown", (e)=> e.stopPropagation());
-    closeBtn.addEventListener("touchstart", (e)=> e.stopPropagation());
   }
 
-  // Helper: フロート解除処理（共通化）
+  // Helper: フロート解除処理
   function disableFloating(){
     container.classList.remove("is-floating");
     
     const ph = document.getElementById("video-placeholder");
     if(ph) ph.style.display = "none";
     
-    // スタイルをリセットして元の位置に戻す
+    // スタイルをリセット
     container.style.transform = "";
     container.style.left = "";
     container.style.top = "";
@@ -2083,10 +2082,9 @@ function formatTimestamp(d){
     container.style.right = "";
     container.style.width = "";
     container.style.height = "";
-    
   }
 
-  // 2. プレースホルダー（動画が抜けた穴を埋める要素）
+  // 2. プレースホルダー
   let placeholder = document.getElementById("video-placeholder");
   if(!placeholder){
     placeholder = document.createElement("div");
@@ -2096,7 +2094,7 @@ function formatTimestamp(d){
     container.parentNode.insertBefore(placeholder, container);
   }
 
-  // 3. 監視マーカー（ここを通過したらPinPにする）
+  // 3. 監視マーカー
   let sentinel = document.getElementById("video-sentinel");
   if(!sentinel){
     sentinel = document.createElement("div");
@@ -2112,7 +2110,6 @@ function formatTimestamp(d){
   // 4. スクロール監視
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
-      // プレースホルダーの高さを動画枠に合わせる
       if(container.offsetHeight > 0 && !container.classList.contains("is-floating")){
          placeholder.style.height = container.offsetHeight + "px";
       }
@@ -2122,18 +2119,15 @@ function formatTimestamp(d){
         if (!isClosedManually && !container.classList.contains("is-floating")) {
           placeholder.style.display = "block"; 
           container.classList.add("is-floating");
-          // 初期位置
           container.style.bottom = "20px";
           container.style.right = "20px";
-          container.style.width = "45vw"; // スマホ向けサイズ
+          container.style.width = "45vw"; 
         }
       } else {
-        // 画面内に戻ってきたら解除
-        isClosedManually = false; // フラグ見直し
+        // 画面内に戻ったら解除
+        isClosedManually = false;
         if (container.classList.contains("is-floating")) {
-          disableFloating(); // ここではスクロールバック不要なので関数内のscrollIntoViewは呼ばれるが、既に画面内なので問題なし
-          // ただしスクロールバックしたくない場合は disableFloatingの中のscrollIntoViewを条件分岐する等の調整が可能
-          // 今回はシンプルに呼んでおく
+          disableFloating();
         }
       }
     });
@@ -2141,44 +2135,50 @@ function formatTimestamp(d){
 
   observer.observe(sentinel);
 
-  // 5. ドラッグ移動ロジック (Pointer Eventsで一本化)
+  // 5. ドラッグ移動ロジック (スマホ最適化)
   let isDragging = false;
-  let startX, startY, initialLeft, initialTop;
+  let startX, startY, startLeft, startTop;
 
+  // コンテナに対する pointerdown
   container.addEventListener("pointerdown", (e) => {
     if (!container.classList.contains("is-floating")) return;
-    // 閉じるボタンの上ならドラッグしない
     if (e.target === closeBtn || closeBtn.contains(e.target)) return;
 
+    // ★重要: ブラウザのデフォルト動作（スクロールなど）を殺す
     e.preventDefault(); 
+    e.stopPropagation();
+
     isDragging = true;
     
     startX = e.clientX;
     startY = e.clientY;
 
     const rect = container.getBoundingClientRect();
-    initialLeft = rect.left;
-    initialTop = rect.top;
     
-    // 固定配置から絶対配置へ切り替え
+    // 現在の位置を「左上基準」の座標に変換してセット
+    // (bottom/right指定から top/left指定へ切り替え)
     container.style.bottom = "auto";
     container.style.right = "auto";
-    container.style.left = initialLeft + "px";
-    container.style.top = initialTop + "px";
+    container.style.left = rect.left + "px";
+    container.style.top = rect.top + "px";
     container.style.width = rect.width + "px"; 
+
+    startLeft = rect.left;
+    startTop = rect.top;
     
     try{ container.setPointerCapture(e.pointerId); }catch(_){}
   });
 
   container.addEventListener("pointermove", (e) => {
     if (!isDragging) return;
-    e.preventDefault();
+    e.preventDefault(); // スクロール抑止
 
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
 
-    container.style.left = `${initialLeft + dx}px`;
-    container.style.top = `${initialTop + dy}px`;
+    // requestAnimationFrameを使わず直接反映（追従性優先）
+    container.style.left = `${startLeft + dx}px`;
+    container.style.top = `${startTop + dy}px`;
   });
 
   const stopDrag = (e) => {
