@@ -420,32 +420,47 @@ font-weight: normal;
 }
 
 /* =========================================
-   ミニプレーヤーの「閉じるボタン」スタイル
+   ミニプレーヤーの「閉じるボタン」スタイル (修正版：内側配置)
    ========================================= */
 #close-float-btn {
-  display: none; /* 最初は隠しておく */
+  display: none; /* 通常時は非表示 */
   
   position: absolute;
-  top: -10px;
-  right: -10px;
-  width: 30px;
-  height: 30px;
+  /* ★修正：枠の内側に配置（画面端で切れないようにする） */
+  top: 8px;
+  right: 8px;
+  z-index: 99999;
+
+  /* サイズと形 */
+  width: 32px;       /* 少し控えめなサイズに */
+  height: 32px;
+  border-radius: 50%;
   
-  background-color: #333; /* 黒背景 */
-  color: #fff;            /* 白文字 */
-  border: 2px solid #fff; /* 白いフチ */
-  border-radius: 50%;     /* 丸くする */
-  
+  /* デザイン：動画の上に載るので半透明の黒背景にする */
+  background-color: rgba(0, 0, 0, 0.6); 
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.8); /* 白い細い枠線 */
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);      /* 影 */
+
+  /* 文字設定 */
   font-size: 20px;
-  font-weight: bold;
+  font-family: Arial, sans-serif;
   line-height: 1;
+  padding: 0;
   cursor: pointer;
-  z-index: 10001; /* 映像より手前に */
   
+  /* 中央揃え */
   align-items: center;
   justify-content: center;
-  padding: 0;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+  
+  /* タップ領域の最適化 */
+  touch-action: manipulation;
+}
+
+/* 押した時のリアクション */
+#close-float-btn:active {
+  background-color: rgba(255, 50, 50, 0.8); /* 押すと赤っぽくなる */
+  transform: scale(0.95);
 }
 
 /* ミニプレーヤー化した時だけボタンを表示 */
