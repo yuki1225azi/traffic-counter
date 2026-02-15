@@ -501,47 +501,70 @@ function saveRoi(){
   try{ localStorage.setItem(LS_KEY_ROI, JSON.stringify(ROI_NORM)); }catch(_e){}
 }
 
-/* ========= ROI操作（スクロール優先・誤操作防止版） ========= */
+/* ========= ROI操作（高速追従・スマホ最適化版） ========= */
 function setupRoiDrag(){
   const c = DOM.canvas;
   if(!c) return;
 
   let dragging = false;
   let dragIndex = -1;
+  
+  // ★高速化用キャッシュ：ドラッグ中の計算コストをゼロにするための変数
+  let dragCache = null;
 
-  // 判定範囲（見た目のピクセル数）
-  // ★修正：判定範囲は広げず、指先サイズ(30px)に留めることで
-  // 近くを触っても「スクロール」と判定される余地を残す
+  // 判定範囲（半径px）
   const TOUCH_HIT_RADIUS_PX = 30; 
   const MOUSE_HIT_RADIUS_PX = 15;
 
-  const getHitRadius = (pointerType) => {
-    const rect = c.getBoundingClientRect();
+  // Canvas座標算出（初期判定用：既存ロジック）
+  const getHitRadius = (pointerType, rect) => {
     if (!rect.width) return 40;
-    
-    // 表示サイズとCanvas内部解像度の比率
     const displayToInternalScale = c.width / rect.width;
-    
-    // ポインタの種類で判定サイズを切り替え
     const visualRadius = (pointerType === 'touch' || pointerType === 'pen') 
                          ? TOUCH_HIT_RADIUS_PX 
                          : MOUSE_HIT_RADIUS_PX;
-    
     return visualRadius * displayToInternalScale; 
   };
 
   const startDrag = (ev)=>{
-    // 測定中やロック中、ミニプレーヤー時は操作させない
     if(isAnalyzing || window.roiLocked === true) return;
     if(DOM.videoContainer && DOM.videoContainer.classList.contains("is-floating")) return;
 
-    const p = getCanvasPoint(ev);
-    const pts = getRoiPx(); 
-    const HIT_RADIUS = getHitRadius(ev.pointerType);
+    // ★重要：ここで「getBoundingClientRect」を1回だけ実行し、結果を保存する
+    // 移動イベントの中でこれを呼ぶとスマホでは重すぎてラグの原因になります
+    const rect = c.getBoundingClientRect();
+    
+    // 座標計算用の係数をあらかじめ計算してキャッシュする
+    const cw = c.width  || 1;
+    const ch = c.height || 1;
+    const scale = Math.min(rect.width / cw, rect.height / ch);
+    const contentW = cw * scale;
+    const contentH = ch * scale;
+    const offsetX = (rect.width  - contentW) / 2;
+    const offsetY = (rect.height - contentH) / 2;
 
-    // 【重要ロジック】判定範囲内にある点の中で、指に「一番近い点」だけを対象にする
-    // これにより、範囲ギリギリでも「近い方の点」が優先して選ばれるため、
-    // 判定範囲をむやみに広げる必要がなくなります。
+    // キャッシュオブジェクト作成
+    dragCache = { rect, scale, contentW, contentH, offsetX, offsetY, cw, ch };
+
+    // --- ここからはヒット判定（キャッシュを使って計算） ---
+    // ポインタ位置（Canvas内部座標）
+    const clientX = ev.clientX;
+    const clientY = ev.clientY;
+    
+    // 画面上の位置 → コンテンツ内の位置
+    const xIn = clientX - rect.left - offsetX;
+    const yIn = clientY - rect.top  - offsetY;
+    
+    // クランプ（判定用なので枠内になくても計算はするが、補正は入れる）
+    const xClamped = Math.max(0, Math.min(contentW, xIn));
+    const yClamped = Math.max(0, Math.min(contentH, yIn));
+
+    const p = { x: xClamped / scale, y: yClamped / scale };
+
+    // 既存の「一番近い点を探す」ロジック
+    const pts = getRoiPx(); 
+    const HIT_RADIUS = getHitRadius(ev.pointerType, rect);
+
     let closestIdx = -1;
     let minDistance = Infinity;
 
@@ -554,37 +577,41 @@ function setupRoiDrag(){
     });
 
     if(closestIdx !== -1){
-      // ★点がヒットした時だけドラッグ状態にする
       dragging = true;
       dragIndex = closestIdx;
       c.classList.add("roi-active"); 
 
-      // 【ここがポイント】
-      // 点を掴んだことが確定した瞬間だけ、ブラウザのスクロール動作をキャンセルする
-      // これにより、点を外したタップはそのままスクロールになります
       if(ev.cancelable) ev.preventDefault();
       ev.stopImmediatePropagation();
 
+      // ★キャプチャ：指が画面外に出ても追跡する（非常に重要）
       try{ c.setPointerCapture(ev.pointerId); }catch(_e){}
     } else {
-      // ★ヒットしなかった場合は preventDefault() を呼ばない
-      // → ブラウザがこれを「スクロール操作」として処理してくれる
+      dragCache = null; // ヒットしなければキャッシュ破棄
     }
   };
 
   const moveDrag = (ev)=>{
-    if(!dragging || dragIndex === -1) return;
+    // キャッシュが無い＝ドラッグ開始していないので無視
+    if(!dragging || dragIndex === -1 || !dragCache) return;
     
-    // ドラッグ中はずっとスクロールさせない（枠の移動を優先）
     if(ev.cancelable) ev.preventDefault();
 
-    const p = getCanvasPoint(ev);
-    const W = c.width || 1;
-    const H = c.height || 1;
+    // ★高速化の肝：DOMにアクセスせず、保存した数値だけで計算する
+    // これにより、指の動きに対する計算ラグがほぼゼロになります
+    const { rect, scale, contentW, contentH, offsetX, offsetY, cw, ch } = dragCache;
 
+    const xIn = ev.clientX - rect.left - offsetX;
+    const yIn = ev.clientY - rect.top  - offsetY;
+
+    // 画面外に指が行っても、Canvasの端に貼り付くようにクランプ
+    const xClamped = Math.max(0, Math.min(contentW, xIn));
+    const yClamped = Math.max(0, Math.min(contentH, yIn));
+
+    // 座標更新
     ROI_NORM[dragIndex] = {
-      x: Math.max(0, Math.min(1, p.x / W)),
-      y: Math.max(0, Math.min(1, p.y / H))
+      x: Math.max(0, Math.min(1, (xClamped / scale) / cw)),
+      y: Math.max(0, Math.min(1, (yClamped / scale) / ch))
     };
   };
 
@@ -592,13 +619,13 @@ function setupRoiDrag(){
     if(!dragging) return;
     dragging = false;
     dragIndex = -1;
+    dragCache = null; // キャッシュクリア
     
     c.classList.remove("roi-active");
     try{ c.releasePointerCapture(ev.pointerId); }catch(_e){}
     saveRoi();
   };
 
-  // passive: false が必須（スクロールを止める判断をJSでするため）
   c.addEventListener("pointerdown", startDrag, { passive: false });
   c.addEventListener("pointermove", moveDrag, { passive: false });
   c.addEventListener("pointerup", endDrag);
