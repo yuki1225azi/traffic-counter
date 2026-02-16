@@ -397,6 +397,7 @@ let rafId = null;
 let lastInferTime = 0;
 let analysisStartTime = null;
 let hourWindowStart = null;
+let isModelBusy = false;
 
 let geo = { lat: "未取得", lng: "未取得" };
 const MAX_LOGS = 100;
@@ -1388,9 +1389,12 @@ function mainRenderLoop() {
     const interval = 1000 / Number(DOM.maxFps.value);
     const now = performance.now();
 
-    // 解析頻度（FPS）に合わせてAIを動かす
-    if (now - lastInferTime >= interval) {
+    // ★変更：時間が来ていても、AIがまだ「考え中(isModelBusy)」ならスキップする
+    // これにより、処理落ちしている時に無理やり詰め込んでフリーズするのを防ぎます
+    if (!isModelBusy && (now - lastInferTime >= interval)) {
       lastInferTime = now;
+      isModelBusy = true; // ★ロック：準備中フラグを立てる
+
       model.detect(DOM.video).then(preds => {
         const scoreTh = Number(DOM.scoreTh.value);
         // 設定した感度以上のものだけ抽出
@@ -1401,6 +1405,9 @@ function mainRenderLoop() {
         tracker.updateWithDetections(dets);
         updateRoiCountingForConfirmedTracks(); // ROI内判定
         pushHourlySnapshotIfNeeded();          // ログ保存
+      })
+      .finally(() => {
+         isModelBusy = false; // ★解除：終わったらフラグを下ろす（次の注文を受け付ける）
       });
     }
     // AIの枠（四角）を描画
@@ -1783,24 +1790,48 @@ function formatTimestamp(d){
     if(!c) return;
 
     const blockIfLocked = (ev)=>{
-      // ★追加：ピクチャインピクチャ（フローティング）中は無視して、トーストを出さない
-      // DOM.videoContainerが存在するかチェックしてからクラス判定を行う
+      // ピクチャインピクチャ中は無視
       if(DOM.videoContainer && DOM.videoContainer.classList.contains("is-floating")){
         return; 
       }
 
-      // 「測定中」かつ「明示的にロックされている」時だけ止める
+      // 「測定中」かつ「明示的にロックされている」時だけ判定する
       if(isAnalyzing && window.roiLocked === true){
-        // ドラッグ操作中(roi-active)でない場合のみブロック
-        if(!c.classList.contains("roi-active")){
+        
+        // ★修正点：クリック/タップした位置が「ROIの四隅」かどうか計算する
+        const rect = c.getBoundingClientRect();
+        // 内部解像度と表示サイズの比率計算
+        const scale = (c.width || 1) / rect.width; 
+        
+        const mx = (ev.clientX - rect.left) * scale;
+        const my = (ev.clientY - rect.top) * scale;
+        
+        const pts = getRoiPx(); // 現在のROI座標を取得
+        let isHit = false;
+        
+        // 判定半径（setupRoiDragの設定に合わせる：タッチ40px相当）
+        const hitRadius = 40 * scale; 
+
+        // 4つの角のどれかに触れているか？
+        for(const p of pts){
+           const dist = Math.sqrt((mx - p.x)**2 + (my - p.y)**2);
+           if(dist < hitRadius){
+             isHit = true;
+             break;
+           }
+        }
+
+        // ★ROIの角に触れた時だけブロック＆トースト表示
+        if(isHit){
            ev.preventDefault();
            ev.stopImmediatePropagation();
            
-           // タップした瞬間だけメッセージを出す
            if(ev.type === "pointerdown"){
              toast("測定中は測定枠を変更できません");
            }
         }
+        // ★それ以外の場所（ただの映像エリア）なら何もしない
+        // これにより、スマホでのスクロール操作などが通過するようになります
       }
     };
 
