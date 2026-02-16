@@ -44,8 +44,8 @@ body{
   #main-layout {
     display: grid;
     grid-template-columns: 2fr 1.0fr 0.5fr;
-    /* ★修正：JSで高さを決めるので、Grid側はシンプルな auto でOKです */
-    grid-template-rows: auto auto auto;
+    /* ★修正：3行目(ログ・設定)を 1fr (残り全部) に変更し、強制的に引き伸ばす */
+    grid-template-rows: auto auto 1fr;
     grid-template-areas:
       "video controls settings"
       "video counts settings"
@@ -63,7 +63,14 @@ body{
   .panel-group { grid-area: controls; }
   #realtime-stats { grid-area: counts; }
   #info-panel { grid-area: logs; }
-  #settings-panel { grid-area: settings; }
+  
+  /* ★修正：設定パネルも高さ100%・あふれたらスクロールにする */
+  #settings-panel { 
+    grid-area: settings;
+    height: 100%;
+    min-height: 0;      /* Flex/Gridアイテムの縮小バグ防止 */
+    overflow-y: auto;   /* あふれたらスクロール */
+  }
 
   /* 設定パネル内の項目を縦1列に変更 */
 #settings-panel .settings-grid {
