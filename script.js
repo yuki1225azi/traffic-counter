@@ -1964,7 +1964,6 @@ function formatTimestamp(d){
   updateCountUI = function() {
     _updateCountUI.apply(this, arguments);
     try {
-      updateHourTitle(); 
       
       // ★変更点：即時保存(saveBackup)をやめ、1秒間の「溜め」を作る（スマート・セーブ）
       // これにより、連続カウント時のディスク書き込み負荷(ラグ)をゼロにします。
