@@ -1139,7 +1139,14 @@ function setupEventListeners(){
   }
 
   DOM.reserveBtn.addEventListener("click", handleReservation);
-  window.addEventListener("resize", adjustCanvasSize);
+  
+  // ★変更点：ResizeObserverを導入 (単純な window.addEventListener("resize") は廃止)
+  // 画面の微妙な変化やスマホのキーボード表示によるズレを即座に補正します
+  const resizeObserver = new ResizeObserver(() => {
+    // requestAnimationFrameで囲むことで、描画衝突によるチラつきを防ぐ
+    requestAnimationFrame(() => adjustCanvasSize());
+  });
+  if(DOM.videoContainer) resizeObserver.observe(DOM.videoContainer);
 
   // 既存設定は測定中に変更されたら追跡器を再生成（挙動は従来通り）
   ["max-lost","score-th","max-fps"].forEach(id=>{
@@ -1369,12 +1376,12 @@ function setupTracker(){
 function mainRenderLoop() {
   const ctx = DOM.ctx;
 
-  // 1. 共通：映像をキャンバスに描く（常に実行）
-  if (DOM.video.videoWidth) {
-    // 画面サイズを自動調整
-    adjustCanvasSize(); 
-    ctx.drawImage(DOM.video, 0, 0, DOM.canvas.width, DOM.canvas.height);
-  }
+  // 1. 共通：Canvasをクリアする（映像はブラウザ標準のvideoタグに任せる）
+  // ★変更点：drawImageを廃止し、clearRectに変更（ゼロ・コピー描画）
+  // これによりGPU負荷とバッテリー消費が劇的に下がります。
+  ctx.clearRect(0, 0, DOM.canvas.width, DOM.canvas.height);
+
+  // ※ adjustCanvasSize() はループから削除し、イベントリスナー側に任せます
 
   // 2. 測定中だけ実行する処理
   if (isAnalyzing) {
@@ -1407,7 +1414,6 @@ function mainRenderLoop() {
   requestAnimationFrame(mainRenderLoop);
 }
 
-// 枠描画専用の関数（整理のために分離）
 // 枠描画専用の関数（ID非表示 ＆ 残像表示版）
 function drawAllOverlays(ctx) {
   ctx.save();
@@ -1952,14 +1958,27 @@ function formatTimestamp(d){
   let backupInterval = null;
 
   // --- 1. UIのリアルタイム同期 ---
+  let saveDebounceTimer = null; // ★追加：遅延タイマー変数
+
   const _updateCountUI = updateCountUI;
   updateCountUI = function() {
     _updateCountUI.apply(this, arguments);
     try {
-      updateHourTitle(); // カードが変わるたびに上のタイトルも更新
-      saveBackup();      // ★ここに追加！カウントが増えたら即座にバックアップ
+      updateHourTitle(); 
+      
+      // ★変更点：即時保存(saveBackup)をやめ、1秒間の「溜め」を作る（スマート・セーブ）
+      // これにより、連続カウント時のディスク書き込み負荷(ラグ)をゼロにします。
+      if(saveDebounceTimer) clearTimeout(saveDebounceTimer);
+      saveDebounceTimer = setTimeout(saveBackup, 1000); 
+
     } catch(e) {}
   };
+
+  // ★追加：タブを閉じる直前などは待たずに即保存してデータを守る
+  window.addEventListener("pagehide", () => {
+    if(saveDebounceTimer) clearTimeout(saveDebounceTimer);
+    saveBackup();
+  });
 
   // --- 2. バックアップ保存・読込・削除関数 ---
 
