@@ -948,6 +948,7 @@ function countUp(cls){
   if(!UI_CATS.includes(cls)) return;
   countsCurrentHour[cls] += 1;
   updateCountUI();
+  updateHourTitle(); // ★この1行を追加してください
 }
 
 function applyCountByMode(cls){
