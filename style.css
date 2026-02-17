@@ -453,3 +453,16 @@ font-weight: normal;
 #video-container.is-floating #close-float-btn {
   display: flex; 
 }
+
+/* =========================================
+   無効化（disabled）された入力欄のスタイル
+   （復旧時に変更できない項目をグレーアウトする）
+   ========================================= */
+select:disabled,
+input:disabled {
+  background-color: #f2f2f2 !important; /* 背景を薄いグレーに */
+  color: #999 !important;                /* 文字色を薄く */
+  opacity: 0.6 !important;               /* 全体を半透明に（測定中と同じ雰囲気） */
+  cursor: not-allowed;                   /* マウスカーソルを禁止マークに（PC用） */
+  border-color: #ddd;                    /* 枠線を薄く */
+}
