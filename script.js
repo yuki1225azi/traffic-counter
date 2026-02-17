@@ -181,14 +181,17 @@ function injectModeInactiveStyle(){
   if(document.getElementById("mode-inactive-style")) return;
   const st = document.createElement("style");
   st.id = "mode-inactive-style";
-  // 使わない項目を「濃い灰色」で一目で分かるように
+  
+  // ★修正：設定項目のグレーアウトとデザインを統一（薄いグレー）
   st.textContent = `
     .count-item.inactive{
-      background:#d0d0d0 !important;
-      color:#666 !important;
-      border-left-color:#777 !important;
-      opacity:0.9;
-      filter:grayscale(100%);
+      background-color: #f2f2f2 !important; /* 背景色を統一 */
+      color: #999 !important;                /* 文字色を統一 */
+      border-left-color: #ddd !important;    /* 左の太線も薄く */
+      border-color: #ddd !important;         /* 全体の枠線も薄く */
+      opacity: 0.6 !important;               /* 透明度を統一 */
+      filter: grayscale(100%);
+      pointer-events: none;                  /* 操作不可にする */
     }
   `;
   document.head.appendChild(st);
