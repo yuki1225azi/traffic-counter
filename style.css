@@ -466,3 +466,13 @@ input:disabled {
   cursor: not-allowed;                   /* マウスカーソルを禁止マークに（PC用） */
   border-color: #ddd;                    /* 枠線を薄く */
 }
+
+/* =========================================
+   初期ロード時のチラつき防止（修正版）
+   ========================================= */
+/* ロード中は、ヘッダーの2列目以降の「文字色を透明」にする。
+   display: none ではなく color: transparent にすることで、
+   背景のグレー色は残ったまま、文字だけが見えなくなります。 */
+#log-table.is-loading th:nth-child(n+2) {
+  color: transparent;
+}
