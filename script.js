@@ -408,11 +408,9 @@ const zeroCounts = () => ({
 let countsCurrentHour = zeroCounts();
 
 let recordsHourly = [];
-let autoSaveTimer = null;
 let scheduleTimerStart = null;
 let scheduleTimerEnd = null;
 
-let lastSnapAt = 0;
 let frameIndex = 0;
 
 /* ========= モード/ロジック ========= */
@@ -944,11 +942,29 @@ function isVehicleClass(cls){
   return VEHICLE_CATS.includes(cls);
 }
 
+function recordEvent() {
+  const now = new Date();
+  const snapshot = { ...countsCurrentHour };
+  
+  const row = {
+    timestamp: formatTimestamp(now),
+    ...snapshot,
+    total_counted_mode: getCountedTotalByMode(snapshot)
+  };
+
+  recordsHourly.push(row);
+  updateLogDisplay(); // 画面の表も更新
+}
+
+// 修正後
 function countUp(cls){
   if(!UI_CATS.includes(cls)) return;
   countsCurrentHour[cls] += 1;
   updateCountUI();
-  updateHourTitle(); // ★この1行を追加してください
+  updateHourTitle();
+  
+  // ★修正C：カウントが増えたタイミングで即座にログ記録
+  recordEvent();
 }
 
 function applyCountByMode(cls){
@@ -1200,10 +1216,10 @@ function startAnalysis(){
   updateHourTitle();
   updateLogDisplay(true);
 
-  startAutoSaveHourly();
+  // startAutoSaveHourly(); // ★無効化：定時タイマーは使わない
+  recordEvent();            // ★追加：開始直後の「0台」状態を1行目に記録
 
   lastInferTime = 0;
-  frameIndex = 0;
 }
 
 function stopAnalysis(){
@@ -1211,16 +1227,19 @@ function stopAnalysis(){
   DOM.toggleBtn.classList.replace("btn-red", "btn-green");
   DOM.canvas.classList.remove("analyzing");
 
-  stopAutoSaveHourly();
-
   if(recordsHourly.length > 0){
     exportCSV(recordsHourly, geo); 
   }
 
   countsCurrentHour = zeroCounts();
   recordsHourly = [];
+  
+  // ★追加：時刻変数をリセットして、タイトルを「待機中」に戻す
+  analysisStartTime = null; 
+  hourWindowStart = null;
 
   updateCountUI();
+  updateHourTitle(); // ここで上記修正1が動き、「測定待機中」と表示される
   updateLogDisplay(true);
   mainRenderLoop();
 }
@@ -1405,7 +1424,6 @@ function mainRenderLoop() {
         const dets = filterDetectionsByMode(raw);
         tracker.updateWithDetections(dets);
         updateRoiCountingForConfirmedTracks(); // ROI内判定
-        pushHourlySnapshotIfNeeded();          // ログ保存
       })
       .finally(() => {
          isModelBusy = false; // ★解除：終わったらフラグを下ろす（次の注文を受け付ける）
@@ -1466,101 +1484,6 @@ function drawAllOverlays(ctx) {
 }
 
 /* ========= ログ/CSV ========= */
-function startAutoSaveHourly(){
-  // 既存タイマーのクリア（念のため）
-  if(autoSaveTimer) clearTimeout(autoSaveTimer);
-
-  const scheduleNext = () => {
-    const now = new Date();
-    // 次の「0分0秒」を計算（例: 10:15なら11:00:00）
-    const nextHour = new Date(now);
-    nextHour.setHours(now.getHours() + 1, 0, 0, 0);
-    
-    // 待ち時間を計算
-    const delay = nextHour.getTime() - now.getTime();
-
-    // 次の00分になったら実行
-    autoSaveTimer = setTimeout(async () => {
-      // -------------------------------------------------
-      // 【変更点】CSV保存はせず、内部データ(recordsHourly)に溜め込む
-      // iPhoneでのポップアップ停止対策
-      // -------------------------------------------------
-      
-      // 1. 前の時間の「59分59秒」のデータを記録して区切る
-      const endTime = new Date(nextHour);
-      endTime.setSeconds(endTime.getSeconds() - 1);
-
-      const snapshotA = { ...countsCurrentHour };
-      const rowA = {
-        timestamp: formatTimestamp(endTime),
-        ...snapshotA,
-        total_counted_mode: getCountedTotalByMode(snapshotA),
-      };
-      recordsHourly.push(rowA);
-
-      // ★削除：await exportCSV(...) は実行しない
-      // ★削除：recordsHourly = [] (リセット) もしない
-      // → これにより、データは消えずに次の時間分も後ろに追加されていきます
-
-      // 2. カウント（画面上の数字）のみ0にリセット
-      countsCurrentHour = zeroCounts();
-
-      // 新しい時間の開始時刻（xx:00:00）
-      const startTime = new Date(nextHour);
-      hourWindowStart = startTime;
-      analysisStartTime = startTime; // 必要に応じて更新
-      
-      // 新しい時間の「00分00秒」のデータを記録
-      const snapshotB = { ...countsCurrentHour }; 
-      const rowB = {
-        timestamp: formatTimestamp(startTime),
-        ...snapshotB,
-        total_counted_mode: 0
-      };
-      recordsHourly.push(rowB);
-
-      // 重複記録防止
-      lastSnapAt = Date.now();
-
-      // 画面更新
-      updateHourTitle();
-      updateCountUI();
-      updateLogDisplay(true); // ログ表は見やすくリセット
-
-      // ★変更：ダウンロード通知ではなく、継続通知を出す
-      toast(`${startTime.getHours()}時になりました。測定を継続します。`);
-
-      // 次の正時（さらに1時間後）を予約
-      scheduleNext();
-
-    }, delay);
-  };
-
-  // 初回の予約を実行
-  scheduleNext();
-}
-
-function stopAutoSaveHourly(){
-  if(autoSaveTimer){
-    clearTimeout(autoSaveTimer); // setIntervalではなくsetTimeoutになったため修正
-    autoSaveTimer = null;
-  }
-}
-
-function pushHourlySnapshotIfNeeded(){
-  const t = Date.now();
-  if(t - lastSnapAt < 1000) return;
-  lastSnapAt = t;
-
-const snapshot = { ...countsCurrentHour };
-const row = {
-  timestamp: formatTimestamp(new Date(t)),
-  ...snapshot,
-  total_counted_mode: getCountedTotalByMode(snapshot),
-};
-  recordsHourly.push(row);
-  updateLogDisplay();
-}
 
 // モードに合わせて表の列（ヘッダー）を表示/非表示にする関数
 function updateLogTableVisibility() {
@@ -1640,19 +1563,29 @@ function updateLogDisplay(clear=false){
 }
 
 function updateHourTitle(){
-  const h = (hourWindowStart || new Date()).getHours();
+  // ★修正：まだ開始していない（かつ復旧データもない）場合は「待機中」にする
+  if (!analysisStartTime) {
+    DOM.hourTitle.textContent = "測定待機中";
+    return;
+  }
+
+  // 開始時刻がある場合のみ、時刻計算を行う
+  const d = analysisStartTime;
+  const h = String(d.getHours()).padStart(2,"0");
+  const m = String(d.getMinutes()).padStart(2,"0");
+  const s = String(d.getSeconds()).padStart(2,"0");
+  const timeStr = `${h}:${m}:${s}`;
 
   if(countMode === "pedestrian"){
-    // 歩行者モード
-    const total = countsCurrentHour.person || 0;
-    DOM.hourTitle.textContent = `${h}時台の通行量`;
+    DOM.hourTitle.textContent = `${timeStr}~の通行量`;
     return;
   }
 
   // 車両モード
   const total = getCountedTotalByMode(countsCurrentHour);
-  DOM.hourTitle.textContent = `${h}時台の交通量：計${total}台`;
+  DOM.hourTitle.textContent = `${timeStr}~の交通量：計${total}台`;
 }
+
 function updateCountUI(){
   for(const k of UI_CATS){
     DOM.count[k].textContent = countsCurrentHour[k];
@@ -2067,9 +2000,13 @@ function formatTimestamp(d){
     isResumed = true;
     // ロード完了後に通知とUI更新
     window.addEventListener("load", () => {
-       updateCountUI(); // これでカードもタイトルも更新される
-       rebuildLogTable(); // ★これ1行に置き換え
+       updateCountUI(); 
+       rebuildLogTable(); 
        toast("前回のデータを復元しました。\n「開始」で測定を再開します。", true);
+
+       // ★追加：データ不整合を防ぐため、モード変更プルダウンだけはロックする
+       const modeSel = document.getElementById("count-mode");
+       if(modeSel) modeSel.disabled = true;
     });
   }
 
@@ -2095,8 +2032,11 @@ function formatTimestamp(d){
 
       // UI再反映
       isResumed = false;
-      updateCountUI(); // タイトルも更新される
-      rebuildLogTable(); // ★これ1行に置き換え
+      updateCountUI(); 
+      rebuildLogTable(); 
+      
+      // ★追加：復元した「元の開始時刻」を使ってタイトルを再描画する
+      updateHourTitle(); 
 
       toast("中断箇所から測定を再開しました");
       saveBackup();
