@@ -1790,11 +1790,11 @@ function formatTimestamp(d){
 (function disableSettingsWhileRunningPatch(){
   try{
     const SETTINGS_IDS = [
-      "count-mode", // 測定対象（モード）
+      "count-mode",
+      "hit-area", 
       "score-th",
       "max-lost",
       "max-fps",
-      // 予約系も止めたいなら追加
       "auto-start-dt",
       "auto-end-dt",
       "reserve-btn",
