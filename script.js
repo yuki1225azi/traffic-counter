@@ -1493,6 +1493,9 @@ function updateLogTableVisibility() {
   const table = document.getElementById("log-table");
   if (!table) return;
 
+  // ★追加：準備ができたら「ロード中クラス」を外す（これで文字が表示される）
+  table.classList.remove("is-loading");
+
   const ths = table.querySelectorAll("thead th");
   // thsの並び順: [0]日時, [1]乗用車, [2]バス, [3]トラック, [4]バイク, [5]自転車, [6]歩行者
   
