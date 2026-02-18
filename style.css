@@ -1,3 +1,6 @@
+/* =========================================
+   CSS変数定義 (カラーパレット・設定)
+   ========================================= */
 :root{
   --start-color: #4CAF50;
   --stop-color: #e53935;
@@ -14,6 +17,10 @@
   --clr-car:#1e88e5; --clr-bus:#43a047; --clr-truck:#fb8c00;
   --clr-motorcycle:#8e24aa; --clr-bicycle:#fdd835; --clr-person:#e53935;
 }
+
+/* =========================================
+   基本リセット・全体設定
+   ========================================= */
 *{ box-sizing: border-box; }
 html{ font-size: 15px; }
 body{
@@ -22,6 +29,10 @@ body{
   color: var(--font-color);
   background: var(--bg);
 }
+
+/* =========================================
+   メインコンテナ・ヘッダー
+   ========================================= */
 #container{ width: 100%; max-width: 100%; margin: 0 auto; padding: 0.8rem; }
 #app-header{
   display: flex; flex-direction: column; align-items: center;
@@ -35,16 +46,17 @@ body{
 #status-indicator.hidden { opacity: 0; }
 #loading-progress{ width: 150px; height: 10px; }
 
-/* ★★★修正箇所：レイアウトの定義★★★ */
-/* デフォルト（モバイル）は縦積み */
+/* =========================================
+   レイアウト定義 (モバイル・PC)
+   ========================================= */
+/* デフォルト（モバイル） */
 #main-layout{ display: flex; flex-direction: column; gap: 1rem; }
 
-/* ノートパソコン向け3列レイアウト */
+/* PC・タブレット向けグリッドレイアウト */
 @media (min-width: 1024px) {
   #main-layout {
     display: grid;
     grid-template-columns: 2fr 1.0fr 0.5fr;
-    /* ★修正：3行目(ログ・設定)を 1fr (残り全部) に変更し、強制的に引き伸ばす */
     grid-template-rows: auto auto 1fr;
     grid-template-areas:
       "video controls settings"
@@ -58,47 +70,44 @@ body{
     }
   }
 
-  /* 各要素をグリッドの所定の位置に配置 */
+  /* エリア割り当て */
   #video-container { grid-area: video; }
   .panel-group { grid-area: controls; }
   #realtime-stats { grid-area: counts; }
   #info-panel { grid-area: logs; }
   
-  /* ★修正：設定パネルも高さ100%・あふれたらスクロールにする */
+  /* 設定パネルの高さ調整 */
   #settings-panel { 
     grid-area: settings;
     height: 100%;
-    min-height: 0;      /* Flex/Gridアイテムの縮小バグ防止 */
-    overflow-y: auto;   /* あふれたらスクロール */
+    min-height: 0;      
+    overflow-y: auto;   
   }
 
-  /* 設定パネル内の項目を縦1列に変更 */
-#settings-panel .settings-grid {
+  #settings-panel .settings-grid {
     grid-template-columns: 1fr;
   }
 
-  /* ▼▼▼ ここから追加：PCのときだけ高さを自動で伸ばす ▼▼▼ */
+  /* ログパネルの高さ調整 */
   #info-panel {
-    height: 100%;      /* パネル自体の高さをグリッド枠に合わせる */
-    overflow: hidden;  /* はみ出し防止 */
+    height: 100%;      
+    overflow: hidden;  
   }
 
   #log-display {
-    /* height: 0; ←削除：JS制御下では不要 */
-    /* min-height: 0; ←削除 */
-    height: auto;      /* ★追加：自然な高さにする */
-    flex: 1;           /* 親パネルの残りの高さを埋める */
-    overflow-y: auto;  /* あふれたらスクロール */
+    height: auto;      
+    flex: 1;           
+    overflow-y: auto;  
   }
 }
 
-/* 映像 */
+/* =========================================
+   映像エリア・Canvas
+   ========================================= */
 #video-container{
   position: relative; width: 100%; background: #000;
   border-radius: 8px; overflow: hidden; box-shadow: var(--panel-shadow);
 }
-
-
 #video, #canvas{
   position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;
 }
@@ -108,11 +117,13 @@ body{
 }
 #canvas.analyzing{
   border-color: var(--border-color-analyzing);
-  border-width: 5px;                            /* 枠線を太くする */
-  box-shadow: 0 0 20px rgba(229, 57, 53, 0.6);  /* 赤く光るエフェクトを追加 */
+  border-width: 5px;                            
+  box-shadow: 0 0 20px rgba(229, 57, 53, 0.6);  
 }
 
-/* リアルタイム統計 */
+/* =========================================
+   リアルタイム統計表示
+   ========================================= */
 #realtime-stats {
   background: var(--panel-bg); padding: 0.8rem; border-radius: 8px;
   box-shadow: var(--panel-shadow); border: 1px solid var(--border-light);
@@ -120,8 +131,8 @@ body{
 #realtime-stats h2{ 
   margin: 0 0 0.6rem; 
   font-size: 1rem; 
-  border-bottom: 1px solid var(--border-light); /* ★追加：区切り線 */
-  padding-bottom: 0.4rem;                       /* ★追加：線と文字の間の余白 */
+  border-bottom: 1px solid var(--border-light); 
+  padding-bottom: 0.4rem;                       
 }
 .counts{ display: grid; gap: 0.4rem; grid-template-columns: repeat(3, 1fr); }
 .count-item{
@@ -136,7 +147,9 @@ body{
 .count-item.bicycle{ border-left-color:var(--clr-bicycle); }
 .count-item.person{ border-left-color:var(--clr-person); }
 
-/* パネル共通 */
+/* =========================================
+   パネル共通・設定パネル
+   ========================================= */
 .panel{
   background: var(--panel-bg); padding: 0.8rem; border-radius: 8px;
   box-shadow: var(--panel-shadow); border: 1px solid var(--border-light);
@@ -146,7 +159,6 @@ body{
   border-bottom: 1px solid var(--border-light); padding-bottom: 0.4rem;
 }
 
-/* 設定パネル：タイトル右側のインフォマーク */
 #settings-panel .panel-title-row{
   display:flex;
   align-items:center;
@@ -180,7 +192,9 @@ body{
   box-shadow: 0 1px 3px rgba(0,0,0,0.12);
 }
 
-/* タブ */
+/* =========================================
+   タブ・操作ボタン
+   ========================================= */
 .panel-group { border-radius: 8px; box-shadow: var(--panel-shadow); overflow: hidden; border: 1px solid var(--border-light); }
 .tabs { display: flex; background-color: #f8f9fa; }
 .tab-link {
@@ -195,7 +209,6 @@ body{
 .tab-content > .panel { border: none; box-shadow: none; border-radius: 0; }
 .tab-content:not(.active) { display: none; }
 
-/* ボタン */
 .btn {
   width: 100%; padding: 0.5rem; font-size: 1rem; text-align: center; font-weight: bold;
   color: #fff; border: none; border-radius: 6px; cursor: pointer; transition: all .2s ease;
@@ -207,9 +220,11 @@ body{
 .btn-red{ background-color: var(--stop-color); }
 .btn-blue{ background-color: var(--reserve-color); }
 
-/* 入力欄と設定 */
+/* =========================================
+   入力フォーム・グリッド
+   ========================================= */
 .schedule-inputs { display: flex; flex-direction: row; gap: 0.6rem; margin-bottom: 0.6rem; }
-.schedule-inputs label { flex: initial; } /* ★追加: ボックスが不必要に伸びるのを防ぐ */
+.schedule-inputs label { flex: initial; } 
 .settings-grid{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem 0.8rem; }
 .settings-grid label, .schedule-inputs label {
   display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.8rem; flex: 1;
@@ -218,62 +233,56 @@ input[type="number"], input[type="datetime-local"], select {
   width: 100%; padding: 0.4rem; border: 1px solid var(--border-light); border-radius: 4px; font-size: 0.85rem;
 }
 
-/* 情報・ログ */
+/* =========================================
+   ログ情報パネル
+   ========================================= */
 #info-panel { 
   display: flex; 
   flex-direction: column;
   
-  /* ▼▼▼ 追加：高さ制限とスクロールの基点を作る ▼▼▼ */
-  height: 100%;       /* グリッドエリアの高さいっぱいに広げる */
-  min-height: 0;      /* Flexアイテムがコンテンツ以上に縮めるようにする（重要） */
-  overflow: hidden;   /* はみ出した分は隠す（スクロールは中の#log-displayでやる） */
+  height: 100%;       
+  min-height: 0;      
+  overflow: hidden;   
 }
 
-/* ▼▼▼ 追加・修正：ログヘッダーの横並び設定 ▼▼▼ */
 .log-header {
   display: flex;
-  align-items: baseline;        /* 文字のベースライン（下）を揃える */
-  justify-content: space-between; /* タイトルを左、緯度経度を右端へ */
-  flex-wrap: wrap;              /* 画面が狭いときは折り返す */
-  gap: 12px;                    /* タイトルと情報の間の隙間 */
+  align-items: baseline;        
+  justify-content: space-between; 
+  flex-wrap: wrap;              
+  gap: 12px;                    
   
-  border-bottom: 1px solid var(--border-light); /* 線はここに移動 */
+  border-bottom: 1px solid var(--border-light); 
   padding-bottom: 0.4rem;
   margin-bottom: 0.6rem;
 }
 
-/* 既存のh3スタイルの上書き（線を消して余白をなくす） */
 .log-header h3 {
   margin: 0;
   border-bottom: none;
   padding-bottom: 0;
-  /* フォントサイズは既存の 1rem (約15px) 太字 */
 }
 
-/* 緯度経度の見た目調整（タイトルと区別をつける） */
 .geo {
   display: flex;
   gap: 1rem;
-  font-size: 0.75rem;       /* タイトルより小さく (約12px) */
-  color: #666;              /* 真っ黒ではなく少しグレーに */
-  font-weight: normal;      /* 細字にする */
-  margin: 0;                /* 余計な余白を削除 */
+  font-size: 0.75rem;       
+  color: #666;              
+  font-weight: normal;      
+  margin: 0;                
 }
 
-/* 数値部分だけ少し強調 */
 .geo strong {
-  color: #333;              /* 数値は濃い黒で */
+  color: #333;              
   font-weight: 600;
   margin-left: 2px;
 }
 #log-display{
-  height: 150px;      /* ★スマホでは150pxに固定する */
-  overflow-y: auto;   /* 200pxを超えたらスクロール */
+  height: 150px;      
+  overflow-y: auto;   
   
   border: 1px solid var(--border-light);
   border-radius: 4px;
-  
-  /* flexの設定はここでは書かない（PC用で書く） */
 }
 #log-table{ width: 100%; border-collapse: collapse; font-size: 0.8rem; }
 #log-table th{
@@ -282,7 +291,9 @@ font-weight: normal;
 }
 #log-table td{ border-bottom: 1px solid var(--border-light); padding: 4px; text-align: center; }
 
-/* その他 */
+/* =========================================
+   通知トースト
+   ========================================= */
 #toast{
   position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%);
   background: rgba(0,0,0,.8); color: #fff; padding: 10px 18px; border-radius: 8px;
@@ -293,11 +304,10 @@ font-weight: normal;
 .hidden{ display:none !important; }
 
 /* =========================================
-   スマホ・モバイル表示最適化（最終調整版）
+   モバイル用調整 (最大幅600px)
    ========================================= */
 @media (max-width: 600px) {
 
-  /* 1. タイトル: 文字サイズを小さくして改行を防止 */
   #app-title {
     font-size: 1.1rem !important;
     margin-bottom: 0.2rem;
@@ -307,37 +317,33 @@ font-weight: normal;
     align-items: center !important;
   }
   
-  /* 2. モデル読み込み中: 文字サイズ縮小、2行化防止 */
   #status-indicator {
-    font-size: 0.8rem !important; /* 文字を小さく */
-    flex-wrap: nowrap !important; /* 絶対に折り返さない */
+    font-size: 0.8rem !important; 
+    flex-wrap: nowrap !important; 
   }
   #loading-progress {
-    width: 100px !important;      /* スマホでは100px固定 */
+    width: 100px !important;      
   }
 
-  /* 3. カウントカード: 「トラック：0台」を1行に収める */
   .count-item {
-    font-size: 0.7rem !important;  /* 極小サイズ */
-    white-space: nowrap !important; /* 改行禁止 */
+    font-size: 0.7rem !important;  
+    white-space: nowrap !important; 
     text-align: center;
     display: flex;
     align-items: center;
   }
   
-  /* 4. 見出し統一（〇時台、ログ、設定）: サイズ統一＆改行防止 */
   #current-hour-title,
   .panel h3,
   .log-header h3,
   #settings-panel h3 {
-    font-size: 0.9rem !important; /* 統一サイズ */
+    font-size: 0.9rem !important; 
     white-space: nowrap !important;
     overflow: hidden;
     text-overflow: ellipsis;
     line-height: 1.4;
   }
 
-  /* 5. インフォボタン(i)のサイズ統一 */
   #app-title .title-info-btn,
   #settings-panel .info-btn,
   .setting-info-btn {
@@ -347,50 +353,46 @@ font-weight: normal;
     line-height: 1 !important;
   }
   
-  /* 6. 入力欄のグレー解除 (iOS対策) */
   input, select {
-    appearance: none;           /* デフォルトスタイル解除 */
-    -webkit-appearance: none;   /* iOS Safari用 */
+    appearance: none;           
+    -webkit-appearance: none;   
     background-color: #ffffff !important;
     color: #333333 !important;
-    opacity: 1 !important;      /* 透明度を強制解除 */
+    opacity: 1 !important;      
     border: 1px solid #ccc;
   }
 
-  /* 7. 予約入力（日時）: 横並び重なり防止 & プレースホルダー表示 */
   .schedule-inputs {
     display: flex;
-    flex-direction: row !important; /* 横並び強制 */
-    gap: 2px !important;            /* 隙間を極限まで詰める */
+    flex-direction: row !important; 
+    gap: 2px !important;            
   }
   
   .schedule-inputs label {
-    flex: 1;             /* 幅を等分 */
-    min-width: 0;        /* 親枠からはみ出さないようにする（重要） */
+    flex: 1;             
+    min-width: 0;        
     font-size: 0.8rem !important;
     overflow: hidden;
   }
 
   input[type="datetime-local"] {
     width: 100% !important;
-    padding: 0 !important;         /* 余白なし */
-    height: 34px;                  /* タップしやすい高さは確保 */
-    letter-spacing: -0.5px;        /* 文字間を詰める */
+    padding: 0 !important;         
+    height: 34px;                  
+    letter-spacing: -0.5px;        
   }
 }
 
-/* --- 8. 測定ログの表ヘッダー：文字サイズ縮小 & 余白詰め --- */
+  /* モバイル用テーブルヘッダー調整（メディアクエリ外） */
   #log-table th {
     font-size: 0.7rem !important;
     padding: 4px 1px !important;
     white-space: nowrap !important;
   }
-} /* ← ここ！ここでスマホ用設定(@media)を終了させる */
-
-/* ここから下は @media の外側（PC・スマホ共通）に置く必要があります */
+} 
 
 /* =========================================
-   案1：ドラッグ移動付きフロート表示用CSS
+   フローティング動画プレーヤー
    ========================================= */
 #video-placeholder {
   width: 100%;
@@ -419,9 +421,6 @@ font-weight: normal;
   border-radius: 10px;
 }
 
-/* =========================================
-   ミニプレーヤーの「閉じるボタン」スタイル
-   ========================================= */
 #close-float-btn {
   display: none;
   position: absolute;
@@ -455,38 +454,27 @@ font-weight: normal;
 }
 
 /* =========================================
-   無効化（disabled）された入力欄のスタイル
-   （復旧時に変更できない項目をグレーアウトする）
+   その他ユーティリティ
    ========================================= */
 select:disabled,
 input:disabled {
-  background-color: #f2f2f2 !important; /* 背景を薄いグレーに */
-  color: #999 !important;                /* 文字色を薄く */
-  opacity: 0.6 !important;               /* 全体を半透明に（測定中と同じ雰囲気） */
-  cursor: not-allowed;                   /* マウスカーソルを禁止マークに（PC用） */
-  border-color: #ddd;                    /* 枠線を薄く */
+  background-color: #f2f2f2 !important; 
+  color: #999 !important;                
+  opacity: 0.6 !important;               
+  cursor: not-allowed;                   
+  border-color: #ddd;                    
 }
 
-/* =========================================
-   初期ロード時のチラつき防止（修正版）
-   ========================================= */
-/* ロード中は、ヘッダーの2列目以降の「文字色を透明」にする。
-   display: none ではなく color: transparent にすることで、
-   背景のグレー色は残ったまま、文字だけが見えなくなります。 */
 #log-table.is-loading th:nth-child(n+2) {
   color: transparent;
 }
 
-/* =========================================
-   iOS Safari対策：ビデオの再生・停止ボタンを完全非表示にする
-   ========================================= */
 #video {
-  pointer-events: none;       /* タップ操作を無効化 */
-  -webkit-user-select: none;  /* 長押し選択などを無効化 */
+  pointer-events: none;       
+  -webkit-user-select: none;  
   user-select: none;
 }
 
-/* 標準のコントローラーを強制的に隠す */
 #video::-webkit-media-controls {
   display: none !important;
 }
