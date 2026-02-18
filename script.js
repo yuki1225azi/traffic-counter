@@ -1,11 +1,8 @@
-/* =========================
-   スマート交通量カウンター
-   ========================= */
-
+// 定数定義
 const UI_CATS = ['car','bus','truck','motorcycle','bicycle','person'];
 const VEHICLE_CATS = ['car','bus','truck','motorcycle','bicycle'];
 
-// DOM
+// DOM要素の参照
 const DOM = {
   videoContainer: document.getElementById("video-container"),
   video: document.getElementById("video"),
@@ -39,23 +36,19 @@ const DOM = {
   geoLng: document.getElementById("geo-lng"),
 };
 
-/* ========= 共通モーダル（alert置換） =========
-   - 127.0.0.1:xxxx のようなブラウザ標準タイトルを出さない
-   - 枠外クリック/タップで閉じる（OKボタンなし）
-*/
+// 情報モーダル関連
 let INFO_MODAL = { overlay:null, title:null, body:null };
 
 function ensureInfoModal(){
   if(INFO_MODAL.overlay) return;
 
-  // style（最小限。既存CSSを崩さない）
   if(!document.getElementById("info-modal-style")){
      const st = document.createElement("style");
      st.id = "info-modal-style";
      st.textContent = `
       .info-modal-overlay{
         position:fixed; inset:0;
-        background: rgba(0,0,0,0.5); /* 背景の暗さを少し強めてモーダルを目立たせる */
+        background: rgba(0,0,0,0.5); 
         display:none;
         align-items:center;
         justify-content:center;
@@ -63,11 +56,12 @@ function ensureInfoModal(){
         padding: 16px;
       }
       .info-modal{
-        width: min(640px, 90vw);  /* 96vwだと端すぎるので90vwに */
-        max-height: 80vh;         /* 520px制限を撤廃し、画面の80%まで広げる */
-        background: #ffffff;      /* 白背景 */        color: #333;              /* 黒文字 */
+        width: min(640px, 90vw);  
+        max-height: 80vh;         
+        background: #ffffff;      
+        color: #333;              
         border-radius: 14px;
-        border: none;             /* 白背景ならボーダーなしで影だけで十分綺麗 */
+        border: none;             
         box-shadow: 0 10px 30px rgba(0,0,0,0.25);
         overflow: hidden;
         display:flex;
@@ -77,15 +71,15 @@ function ensureInfoModal(){
         display:flex;
         align-items:center;
         justify-content:space-between;
-        padding: 8px 16px;       /* 余白を少し調整 */
-        border-bottom: 1px solid #eee; /* 薄いグレーの区切り線 */
+        padding: 8px 16px;       
+        border-bottom: 1px solid #eee; 
         font-weight: 700;
         font-size: 1.1rem;
-        color: #2c3e50;           /* ヘッダー文字色を少し濃く */
+        color: #2c3e50;           
       }
       .info-modal-close{
         width: 32px; height: 32px;
-        border-radius: 50%;       /* 丸くする */
+        border-radius: 50%;       
         border: 1px solid #ddd;
         background: #f8f9fa;
         color: #666;
@@ -145,17 +139,14 @@ function ensureInfoModal(){
     overlay.style.display = "none";
   };
 
-  // 枠外クリック/タップで閉じる
   overlay.addEventListener("pointerdown", (e)=>{
     if(e.target === overlay) close();
   });
 
-  // 中身クリックで閉じない
   modal.addEventListener("pointerdown", (e)=> e.stopPropagation());
 
   closeBtn.addEventListener("click", close);
 
-  // ESCでも閉じる（PC用）
   window.addEventListener("keydown", (e)=>{
     if(e.key === "Escape" && overlay.style.display === "flex") close();
   });
@@ -170,8 +161,7 @@ function showInfoModal(titleText, bodyText){
   INFO_MODAL.overlay.style.display = "flex";
 }
 
-
-// 画面上のカウントカード（灰色化用）
+// UI状態制御
 const COUNT_ITEM_EL = {};
 for(const cat of UI_CATS){
   COUNT_ITEM_EL[cat] = document.querySelector(`.count-item.${cat}`);
@@ -182,16 +172,15 @@ function injectModeInactiveStyle(){
   const st = document.createElement("style");
   st.id = "mode-inactive-style";
   
-  // ★修正：設定項目のグレーアウトとデザインを統一（薄いグレー）
   st.textContent = `
     .count-item.inactive{
-      background-color: #f2f2f2 !important; /* 背景色を統一 */
-      color: #999 !important;                /* 文字色を統一 */
-      border-left-color: #ddd !important;    /* 左の太線も薄く */
-      border-color: #ddd !important;         /* 全体の枠線も薄く */
-      opacity: 0.6 !important;               /* 透明度を統一 */
+      background-color: #f2f2f2 !important; 
+      color: #999 !important;                
+      border-left-color: #ddd !important;    
+      border-color: #ddd !important;         
+      opacity: 0.6 !important;               
       filter: grayscale(100%);
-      pointer-events: none;                  /* 操作不可にする */
+      pointer-events: none;                  
     }
   `;
   document.head.appendChild(st);
@@ -210,22 +199,19 @@ function getCountedTotalByMode(counts){
   if(countMode === "pedestrian"){
     return Number(counts.person || 0);
   }
-  // vehicleモード
   return VEHICLE_CATS.reduce((s,k)=>s + Number(counts[k] || 0), 0);
 }
 
+// アプリ説明表示
 function setupTitleDescription(){
   const title = DOM.appTitle;
   if(!title) return;
 
-  // 以前の説明テキスト（span.app-desc）が残っていれば消す
   const oldDesc = title.querySelector(".app-desc");
   if(oldDesc) oldDesc.remove();
 
-  // すでに追加済みなら終了
   if(title.querySelector(".title-info-btn")) return;
 
-  // 最小限のCSS（見た目を大きく変えない）
   if(!document.getElementById("title-help-style")){
     const st = document.createElement("style");
     st.id = "title-help-style";
@@ -250,7 +236,6 @@ function setupTitleDescription(){
   btn.textContent = "i";
   btn.setAttribute("aria-label", "利用ガイド");
 
-  // ★修正箇所：変数名を変更し、クリックイベントを追加
   const APP_GUIDE_TEXT = `【機能】
 AIがカメラ映像から車両5種と歩行者を判別し、交通量をリアルタイムでカウントします。
 測定データはアプリ内に蓄積され、「終了」ボタンを押すと、全期間分をまとめたCSVファイルが一括で保存されます。
@@ -273,22 +258,19 @@ AIがカメラ映像から車両5種と歩行者を判別し、交通量をリ�
   title.appendChild(btn);
 }
 
-/* ========= 設定項目ヘルプ（各項目横のiボタン） ========= */
+// 設定項目のヘルプ表示
 function setupSettingItemHelpPopups(){
-  // 1) 最小限のCSSをJS側で注入（style.cssの見た目を崩さない）
   if(!document.getElementById("setting-help-style")){
     const st = document.createElement("style");
     st.id = "setting-help-style";
     st.textContent = `
-      /* 配置修正: width100%にして左右に振り分け */
       #settings-panel .setting-label-row{
         display:flex; 
         align-items:center; 
-        justify-content:space-between; /* 左端と右端に配置 */
+        justify-content:space-between; 
         width:100%; 
         margin-bottom: 2px;
       }
-      /* デザイン修正: 22px, #f0f2f5 */
       #settings-panel .setting-info-btn{
         width:22px; height:22px; 
         border-radius:50%; 
@@ -303,7 +285,6 @@ function setupSettingItemHelpPopups(){
     document.head.appendChild(st);
   }
 
-// 2) 各設定の説明（id → 日本語説明）
 const HELP = {
     "count-mode":
       "測定する対象の種類を選択します。\n・車両：乗用車、バス、トラック、バイク、自転車\n・歩行者：人のみ",
@@ -324,25 +305,21 @@ const HELP = {
   const grid = document.querySelector("#settings-panel .settings-grid");
   if(!grid) return;
 
-  // すでに追加済みなら二重に作らない
   if(grid.dataset.helpInjected === "1") return;
   grid.dataset.helpInjected = "1";
 
-  // 3) labelの先頭テキストを取り出して、右側にiボタンを付ける
   const labels = Array.from(grid.querySelectorAll("label"));
   labels.forEach((label)=>{
     const control = label.querySelector("input, select, textarea");
     const id = control?.id;
     if(!id || !HELP[id]) return;
 
-    // label内の最初のテキストノード（項目名）を抽出
     let titleText = "";
     for(const n of Array.from(label.childNodes)){
       if(n.nodeType === Node.TEXT_NODE){
         const t = (n.textContent || "").replace(/\s+/g, " ").trim();
         if(t){
           titleText = t;
-          // このテキストノードは置き換える
           label.removeChild(n);
           break;
         }
@@ -378,7 +355,6 @@ const HELP = {
     row.appendChild(title);
     row.appendChild(btn);
 
-    // controlの直前にrowを挿入
     if(control){
       label.insertBefore(row, control);
     }else{
@@ -387,13 +363,11 @@ const HELP = {
   });
 }
 
-
-
 function removeSettingsInfoMark(){
-  // 「設定」見出し右側のインフォマークを消す
   try{ document.getElementById("settings-info-btn")?.remove(); }catch(_e){}
 }
 
+// アプリケーション状態変数
 let model = null;
 let isAnalyzing = false;
 let rafId = null;
@@ -416,7 +390,7 @@ let scheduleTimerEnd = null;
 
 let frameIndex = 0;
 
-/* ========= モード/ロジック ========= */
+// カウントモード設定
 const LS_KEY_MODE  = "trafficCounter.countMode";
 
 const LS_KEY_ROI   = "trafficCounter.roiNorm";
@@ -434,22 +408,18 @@ function modeNoun(){
 }
 
 let countMode  = normalizeMode(localStorage.getItem(LS_KEY_MODE)  || "vehicle");
-// ロジックはROI境界2回に固定
 const countLogic = "roi";
 
-/* ========= ROI（内部保持） ========= */
-// 4つの頂点を [左上, 右上, 右下, 左下] の順で保持する
+// ROI管理
 let ROI_NORM = [
   {x: 0.35, y: 0.3}, {x: 0.65, y: 0.3}, 
   {x: 0.65, y: 0.7}, {x: 0.35, y: 0.7}
 ];
-let roiLocked = false; // trueの間はROI操作を無効化（測定中に固定）
-// 保存済みROIがあれば復元（UIは変えず内部設定のみ）
+let roiLocked = false; 
 try{
   const saved = localStorage.getItem(LS_KEY_ROI);
   if(saved){
     const obj = JSON.parse(saved);
-    // ★4つの有効な座標を持つ「配列」であるかを確認する
     if(Array.isArray(obj) && obj.length === 4 && obj.every(p => isFinite(p.x) && isFinite(p.y))){
       ROI_NORM = obj;
     }
@@ -459,37 +429,30 @@ try{
 function getRoiPx(){
   const W = DOM.canvas.width || 1;
   const H = DOM.canvas.height || 1;
-  // 4点すべての正規化座標をピクセル座標に変換して配列で返す
   return ROI_NORM.map(p => ({ x: p.x * W, y: p.y * H }));
 }
 
-// キャンバス座標 ↔ ROI正規化のユーティリティ
 function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
 
 function getCanvasPoint(ev){
   const rect = DOM.canvas.getBoundingClientRect();
 
-  // canvas内部解像度（動画ピクセル）と表示領域の比率から "contain" の実スケールを求める
   const cw = DOM.canvas.width  || 1;
   const ch = DOM.canvas.height || 1;
 
   const scale = Math.min(rect.width / cw, rect.height / ch);
 
-  // contain で発生する余白（レターボックス）
   const contentW = cw * scale;
   const contentH = ch * scale;
   const offsetX = (rect.width  - contentW) / 2;
   const offsetY = (rect.height - contentH) / 2;
 
-  // 要素左上基準 → コンテンツ左上基準へ
   const xIn = (ev.clientX - rect.left - offsetX);
   const yIn = (ev.clientY - rect.top  - offsetY);
 
-  // コンテンツ外をクリックしたときは端に寄せる（掴みやすくする）
   const xClamped = Math.max(0, Math.min(contentW, xIn));
   const yClamped = Math.max(0, Math.min(contentH, yIn));
 
-  // 表示座標 → canvas内部座標
   return {
     x: xClamped / scale,
     y: yClamped / scale
@@ -500,12 +463,12 @@ function saveRoi(){
   try{ localStorage.setItem(LS_KEY_ROI, JSON.stringify(ROI_NORM)); }catch(_e){}
 }
 
-/* ========= ROI操作（スクロールラグ完全解消版） ========= */
+// ROI操作・ドラッグ処理
 function setupRoiDrag(){
   const c = DOM.canvas;
   if(!c) return;
 
-  c.style.touchAction = "pan-y"; // 初期状態：縦スクロール許可
+  c.style.touchAction = "pan-y"; 
   let dragging = false;
   let dragIndex = -1;
   let dragCache = null;
@@ -516,7 +479,7 @@ function setupRoiDrag(){
 
   const activateScrollLock = () => {
     if(lockTimer) clearTimeout(lockTimer);
-    c.style.touchAction = "none"; // 強制スクロール禁止
+    c.style.touchAction = "none"; 
   };
 
   const scheduleScrollUnlock = (isTouch) => {
@@ -525,7 +488,7 @@ function setupRoiDrag(){
     if (delay > 0) {
       lockTimer = setTimeout(() => {
         c.classList.remove("roi-active");
-        c.style.touchAction = "pan-y"; // スクロール許可に戻す
+        c.style.touchAction = "pan-y"; 
         saveRoi();
         lockTimer = null;
       }, delay);
@@ -537,12 +500,11 @@ function setupRoiDrag(){
     }
   };
 
-  // ★改良：最速で当たり判定を行うためのヘルパー
   const checkHit = (clientX, clientY, isTouch) => {
     const rect = c.getBoundingClientRect();
     const cw = c.width || 1;
-    const ch = c.height || 1; // 高さを取得
-    const scale = Math.min(rect.width / cw, rect.height / ch); // 標準的な計算式
+    const ch = c.height || 1; 
+    const scale = Math.min(rect.width / cw, rect.height / ch); 
     const offsetX = (rect.width - (cw * scale)) / 2;
     const offsetY = (rect.height - (ch * scale)) / 2;
     
@@ -565,21 +527,17 @@ function setupRoiDrag(){
     return { index: closestIdx, rect, scale, offsetX, offsetY };
   };
 
-  // ★最重要：ブラウザのスクロール判断を「先回り」して止める処理
   const handleFastInterrupt = (e) => {
     if (isAnalyzing || window.roiLocked === true) return;
     
-    // オレンジ線の期間中なら無条件でスクロール停止
     if (c.classList.contains("roi-active") && e.cancelable) {
       e.preventDefault();
       return;
     }
 
-    // 触れた瞬間の座標で当たり判定
     const touch = e.touches ? e.touches[0] : e;
     const hit = checkHit(touch.clientX, touch.clientY, !!e.touches);
 
-    // 四隅のどこかに当たっていれば、即座にスクロールスレッドを殺す
     if (hit.index !== -1 && e.cancelable) {
       e.preventDefault();
     }
@@ -593,7 +551,6 @@ function setupRoiDrag(){
     const hit = checkHit(ev.clientX, ev.clientY, isTouch);
 
     if(hit.index !== -1){
-      // ドラッグ開始を確定（ここでも一応呼ぶ）
       if(ev.cancelable) ev.preventDefault();
       
       dragging = true;
@@ -636,7 +593,6 @@ function setupRoiDrag(){
     scheduleScrollUnlock(isTouch);
   };
 
-  // スマホのスクロールラグを殺すため touchstart を先行させる
   c.addEventListener("touchstart", handleFastInterrupt, { passive: false });
   c.addEventListener("pointerdown", startDrag, { passive: false });
   c.addEventListener("pointermove", moveDrag, { passive: false });
@@ -644,16 +600,15 @@ function setupRoiDrag(){
   c.addEventListener("pointercancel", endDrag);
 }
 
-/* ========= ROI描画（枠の変化：オレンジ実線＋太線） ========= */
+// ROI描画処理
 function drawRoi(ctx){
-  const pts = getRoiPx(); // ★新：4点の配列
+  const pts = getRoiPx(); 
   if(pts.length < 4) return;
 
   const isActive = DOM.canvas.classList.contains("roi-active");
   const mainColor = isActive ? "#ff9800" : "#ffffff"; 
 
   ctx.save();
-  // ★新：パスを結んで四角形を塗る
   ctx.beginPath();
   ctx.moveTo(pts[0].x, pts[0].y);
   for(let i=1; i<4; i++) ctx.lineTo(pts[i].x, pts[i].y);
@@ -662,28 +617,23 @@ function drawRoi(ctx){
   ctx.fillStyle = isActive ? "rgba(255, 152, 0, 0.2)" : "rgba(255, 255, 255, 0.15)";
   ctx.fill();
 
-  // ★新：枠線を描画
   ctx.lineWidth = isActive ? 4 : 2;
   ctx.strokeStyle = mainColor;
   if (!isActive) ctx.setLineDash([5, 5]); 
   ctx.stroke();
 
-  // ★改良：どんな背景でも見やすい「二重円」デザインに変更
   ctx.setLineDash([]);
   pts.forEach(pt => {
-    // 1. 外側の影（黒の半透明）
     ctx.beginPath();
     ctx.arc(pt.x, pt.y, 12, 0, Math.PI * 2);
     ctx.fillStyle = "rgba(0,0,0,0.3)";
     ctx.fill();
 
-    // 2. メインの円（オレンジまたは白）
     ctx.beginPath();
     ctx.arc(pt.x, pt.y, 10, 0, Math.PI * 2);
     ctx.fillStyle = mainColor;
     ctx.fill();
 
-    // 3. 内側の中心点（白）
     ctx.beginPath();
     ctx.arc(pt.x, pt.y, 5, 0, Math.PI * 2);
     ctx.fillStyle = "#ffffff";
@@ -695,13 +645,12 @@ function drawRoi(ctx){
   });
 }
 
-/* --- 追加：点 p が多角形 polygon 内にあるか判定 (交差数法) --- */
+// 幾何計算ユーティリティ
 function isPointInPolygon(p, polygon) {
   let isInside = false;
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
     const xi = polygon[i].x, yi = polygon[i].y;
     const xj = polygon[j].x, yj = polygon[j].y;
-    // 点pから水平に引いた線が辺と交差するか判定
     const intersect = ((yi > p.y) !== (yj > p.y)) &&
                       (p.x < (xj - xi) * (p.y - yi) / (yj - yi) + xi);
     if (intersect) isInside = !isInside;
@@ -709,18 +658,15 @@ function isPointInPolygon(p, polygon) {
   return isInside;
 }
 
-/* ========= 幾何計算ヘルパー（ワープ判定用） ========= */
-// 線分(p1-p2)と多角形(polygon)の辺が交差するか判定
 function isLineIntersectingPolygon(p1, p2, polygon) {
   for (let i = 0; i < polygon.length; i++) {
     const s1 = polygon[i];
-    const s2 = polygon[(i + 1) % polygon.length]; // 0-1, 1-2, 2-3, 3-0 の順で辺を作る
+    const s2 = polygon[(i + 1) % polygon.length]; 
     if (getLineIntersection(p1, p2, s1, s2)) return true;
   }
   return false;
 }
 
-// 2つの線分の交差判定
 function getLineIntersection(p0, p1, p2, p3) {
   let s1_x = p1.x - p0.x;     let s1_y = p1.y - p0.y;
   let s2_x = p3.x - p2.x;     let s2_y = p3.y - p2.y;
@@ -729,7 +675,7 @@ function getLineIntersection(p0, p1, p2, p3) {
   return (s >= 0 && s <= 1 && t >= 0 && t <= 1);
 }
 
-/* ========= 追跡器（マルチクラス） ========= */
+// 物体追跡クラス
 class Track {
   constructor(id, det){
     this.id = id;
@@ -742,16 +688,14 @@ class Track {
     this.createdAt = performance.now();
     this.lastSeenAt = this.createdAt;
 
-    // --- 新ロジック用変数（追加） ---
-    this.prevCenter = this.center(); // ワープ判定用（前の位置）
-    this.roiVotes = {};     // ROI内での投票 (本命)
-    this.globalVotes = {};  // 全期間の投票 (保険)
+    this.prevCenter = this.center(); 
+    this.roiVotes = {};     
+    this.globalVotes = {};  
     this.totalFramesInRoi = 0;
-    this.consecutiveOutsideRoi = 0; // 連続退出カウンタ
+    this.consecutiveOutsideRoi = 0; 
     this.warpDetected = false;
     this.counted = false;
     
-    // 作成時も1票入れておく
     this.voteGlobal(det.cls, det.score);
   }
 
@@ -761,7 +705,7 @@ class Track {
   }
 
   update(det){
-    this.prevCenter = this.center(); // 更新前に現在地を保存
+    this.prevCenter = this.center(); 
     this.bbox = det.bbox;
     this.score = det.score;
     this.cls = det.cls;
@@ -769,24 +713,20 @@ class Track {
     this.lostAge = 0;
     this.lastSeenAt = performance.now();
     
-    // 毎フレーム全体投票は行う
     this.voteGlobal(det.cls, det.score);
   }
 
-  // ROI内での投票（本命）
   voteRoi(cls, score){
     if(!this.roiVotes[cls]) this.roiVotes[cls] = 0;
     this.roiVotes[cls] += score;
     this.totalFramesInRoi++;
   }
 
-  // 全体投票（保険）
   voteGlobal(cls, score){
     if(!this.globalVotes[cls]) this.globalVotes[cls] = 0;
     this.globalVotes[cls] += score;
   }
 
-  // ハイブリッド判定で勝者を決める
   getWinnerClass(){
     const candidates = new Set([...Object.keys(this.roiVotes), ...Object.keys(this.globalVotes)]);
     let bestCls = this.cls;
@@ -795,7 +735,6 @@ class Track {
     for(const c of candidates){
       const rScore = this.roiVotes[c] || 0;
       const gScore = this.globalVotes[c] || 0;
-      // 計算式: ROIスコア(本命) + 全体スコア(保険)の10%
       const total = rScore + (gScore * 0.1);
       
       if(total > maxScore){
@@ -807,12 +746,13 @@ class Track {
   }
 }
 
+// トラッカー管理
 class Tracker {
   constructor(opts){
     this.tracks = [];
     this.nextId = 1;
     this.iouThreshold = opts.iouThreshold ?? 0.4;
-    this.minHits = 1; // ★スマホ対策: 1に固定（設定値無視）
+    this.minHits = 1; 
     this.maxLostAge = opts.maxLostAge ?? 30;
     this.onConfirmed = opts.onConfirmed ?? (()=>{});
     this.onRemoved   = opts.onRemoved   ?? (()=>{});
@@ -837,8 +777,6 @@ class Tracker {
     const unmatchedDets = new Set(dets.map((_, i) => i));
     const unmatchedTracks = new Set(this.tracks.map((_, i) => i));
 
-    // --- 第1段階：IOU（重なり）によるマッチング ---
-    // 既存のロジック。形があまり変わらないときはこれで判定。
     const iouPairs = [];
     for (let ti = 0; ti < this.tracks.length; ti++) {
       for (let di = 0; di < dets.length; di++) {
@@ -848,7 +786,6 @@ class Tracker {
         }
       }
     }
-    // スコアが高い順にマッチング確定
     iouPairs.sort((a, b) => b.score - a.score);
     for (const p of iouPairs) {
       if (unmatchedTracks.has(p.ti) && unmatchedDets.has(p.di)) {
@@ -858,15 +795,12 @@ class Tracker {
       }
     }
 
-    // --- 第2段階（追加機能）：中心点距離による救済マッチング ---
-    // 重なり判定で漏れたものを、「距離が近い」という理由で同一とみなす
-    // クラスが変わって枠のサイズが激変したときに効果を発揮します。
     const distPairs = [];
-    const MAX_DIST_REL = 0.2; // 画面幅の20%以内の移動なら同一とみなす
+    const MAX_DIST_REL = 0.2; 
 
     const W = DOM.canvas.width || 1;
     const H = DOM.canvas.height || 1;
-    const norm = Math.sqrt(W * W + H * H); // 画面の対角線長
+    const norm = Math.sqrt(W * W + H * H); 
 
     for (const ti of unmatchedTracks) {
       const tr = this.tracks[ti];
@@ -877,19 +811,15 @@ class Tracker {
         const cx = d.bbox[0] + d.bbox[2] / 2;
         const cy = d.bbox[1] + d.bbox[3] / 2;
         
-        // 距離を計算
         const dist = Math.sqrt((c1.x - cx) ** 2 + (c1.y - cy) ** 2);
         const relDist = dist / norm;
 
-        // 距離が近ければ候補にする
         if (relDist < MAX_DIST_REL) {
-          // 距離が近いほどスコアが高いとする（逆数的な考え）
           distPairs.push({ ti, di, score: 1.0 - relDist });
         }
       }
     }
 
-    // 距離が近い順にマッチング確定
     distPairs.sort((a, b) => b.score - a.score);
     for (const p of distPairs) {
       if (unmatchedTracks.has(p.ti) && unmatchedDets.has(p.di)) {
@@ -899,8 +829,6 @@ class Tracker {
       }
     }
 
-    // --- 結果の更新（既存コードと同じ） ---
-    // 更新（既存トラック）
     for (const m of matches) {
       const tr = this.tracks[m.ti];
       const det = dets[m.di];
@@ -911,19 +839,16 @@ class Tracker {
       }
     }
 
-    // 新規作成（どのトラックともマッチしなかった検出）
     for (const di of unmatchedDets) {
       const det = dets[di];
       const tr = new Track(this.nextId++, det);
       this.tracks.push(tr);
     }
 
-    // 見失いカウント（検出されなかったトラック）
     for (const ti of unmatchedTracks) {
       this.tracks[ti].lostAge++;
     }
 
-    // 削除処理
     const kept = [];
     for (const tr of this.tracks) {
       if (tr.lostAge <= this.maxLostAge) {
@@ -938,9 +863,7 @@ class Tracker {
 
 let tracker = null;
 
-/* ========= カウントロジック (Ver3.0) ========= */
-
-// 必要なヘルパー関数（再定義）
+// カウント・ログ記録処理
 function isVehicleClass(cls){
   return VEHICLE_CATS.includes(cls);
 }
@@ -956,42 +879,33 @@ function recordEvent() {
   };
 
   recordsHourly.push(row);
-  updateLogDisplay(); // 画面の表も更新
+  updateLogDisplay(); 
 }
 
-// 修正後
 function countUp(cls){
   if(!UI_CATS.includes(cls)) return;
   countsCurrentHour[cls] += 1;
   updateCountUI();
   updateHourTitle();
   
-  // ★修正C：カウントが増えたタイミングで即座にログ記録
   recordEvent();
 }
 
 function applyCountByMode(cls){
-  // モードに応じてカウント対象を絞る
   if(countMode === "pedestrian"){
     if(cls === "person") countUp("person");
     return;
   }
-  // vehicleモード：車両のみ
   if(isVehicleClass(cls)) countUp(cls);
 }
 
-// --- メイン判定ロジック（新・滞在型） ---
-
+// ROI内判定・カウントロジック
 function updateRoiCountingForConfirmedTracks(){
-  // --- 1. 設定値に基づいて「実際に判定に使う枠」を計算 ---
   const r_orig = getRoiPx(); 
-  // optionのvalue(0.4など)を使い、中心からの倍率を計算 (例: 0.2なら中心から20%の広さ)
   const factor = DOM.hitArea ? (1.0 - Number(DOM.hitArea.value)) : 1.0; 
 
-  // ROIの重心（中心点）を求める
   const centroid = r_orig.reduce((a, b) => ({x: a.x + b.x/4, y: a.y + b.y/4}), {x:0, y:0});
   
-  // 中心に向かって頂点をスケーリング（縮小）させた新しい枠「r」を作成
   const r = r_orig.map(p => ({
     x: centroid.x + (p.x - centroid.x) * factor,
     y: centroid.y + (p.y - centroid.y) * factor
@@ -1010,7 +924,6 @@ function updateRoiCountingForConfirmedTracks(){
        if(dist < 2.0) isMoving = false; 
     }
 
-    // --- 2. 縮小された枠「r」を使って判定を行う ---
     let inRoi = isPointInPolygon(c, r);
     
     if(inRoi && !isMoving) continue;
@@ -1037,10 +950,7 @@ function updateRoiCountingForConfirmedTracks(){
   }
 }
 function onTrackRemoved(tr){
-  // 消失回収 (Lost Recovery)
-  // 画面端で消えたり、追跡が切れた場合に拾う
   if(!tr.counted){
-    // ROI滞在実績が十分(2フレーム以上) または ワープ経験あり
     if(tr.totalFramesInRoi >= 2 || tr.warpDetected){
       const winner = tr.getWinnerClass();
       applyCountByMode(winner);
@@ -1050,52 +960,44 @@ function onTrackRemoved(tr){
 }
 
 function filterDetectionsByMode(rawDets){
-  // rawDets: [{bbox, score, cls}]
   if(countMode === "pedestrian"){
-    // 歩行者特化：personだけ残す
     return rawDets.filter(d => d.cls === "person");
   }
 
-  // vehicleモード：車両カウントに集中するため、personは一切扱わない（表示もしない）
   const vehicles = rawDets.filter(d => VEHICLE_CATS.includes(d.cls));
   return vehicles;
 }
 
-/* ========= 不足していたプログレスバー更新関数を追加 ========= */
 function progressFake(percent){
   if(DOM.loadingProg) DOM.loadingProg.value = percent;
   if(DOM.loadingPerc) DOM.loadingPerc.textContent = percent + "%";
 }
 
-/* ========= 初期化 (スマホ対策修正版) ========= */
+// アプリケーション初期化
 window.addEventListener("load", init);
 
 async function init(){
   try{
-    removeSettingsInfoMark();    // 設定横の「i」を消す
-    setupTitleDescription();     // タイトル横に「利用ガイド」を出す
-    injectModeInactiveStyle();   // 非アクティブ項目の色設定
+    removeSettingsInfoMark();    
+    setupTitleDescription();     
+    injectModeInactiveStyle();   
 
     applyModeUiState();
     setupSettingItemHelpPopups();
     
-    // ▼▼▼ 追加：スマホのメモリ不足によるフリーズ防止設定 ▼▼▼
     tf.env().set('WEBGL_PACK', false);
     tf.env().set('WEBGL_CONV_IM2COL', false);
 
     progressFake(5);
     
-    // TensorFlow.js の準備
     await tf.ready();
 
-    // バックエンド確認と強制設定
     if(tf.getBackend() !== 'webgl'){
        try{ await tf.setBackend('webgl'); }catch(e){ console.warn(e); }
     }
 
     progressFake(35);
     
-    // ▼▼▼ 変更：軽量版モデル(lite_mobilenet_v2)を指定して読み込む ▼▼▼
     model = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
 
     progressFake(100);
@@ -1136,13 +1038,11 @@ async function init(){
   }
 }
 
-/* ========= イベント ========= */
+// イベントリスナー設定
 function setupEventListeners(){
   DOM.toggleBtn.addEventListener("click", toggleAnalysis);
 
-  // モード切替（設定パネルのプルダウン）
   if(DOM.countModeSelect){
-    // 初期値を反映
     DOM.countModeSelect.value = normalizeMode(countMode);
 
     DOM.countModeSelect.addEventListener("change", ()=>{
@@ -1154,22 +1054,17 @@ function setupEventListeners(){
       setupSettingItemHelpPopups();
       updateLogTableVisibility();
 
-      // すぐ画面に反映（残っているトラックは描画側で抑制）
       if(isAnalyzing) setupTracker();
     });
   }
 
   DOM.reserveBtn.addEventListener("click", handleReservation);
   
-  // ★変更点：ResizeObserverを導入 (単純な window.addEventListener("resize") は廃止)
-  // 画面の微妙な変化やスマホのキーボード表示によるズレを即座に補正します
   const resizeObserver = new ResizeObserver(() => {
-    // requestAnimationFrameで囲むことで、描画衝突によるチラつきを防ぐ
     requestAnimationFrame(() => adjustCanvasSize());
   });
   if(DOM.videoContainer) resizeObserver.observe(DOM.videoContainer);
 
-  // 既存設定は測定中に変更されたら追跡器を再生成（挙動は従来通り）
   ["max-lost","score-th","max-fps"].forEach(id=>{
     document.getElementById(id).addEventListener("change", ()=>{
       if(isAnalyzing) setupTracker();
@@ -1177,7 +1072,7 @@ function setupEventListeners(){
   });
 
   setupTabs();
-  setupRoiDrag(); // ROI枠のドラッグ設定（見た目変化はキャンバス上の枠のみ）
+  setupRoiDrag(); 
 }
 
 
@@ -1195,7 +1090,7 @@ function setupTabs(){
   });
 }
 
-/* ========= 測定開始・終了 ========= */
+// 測定開始・停止制御
 function toggleAnalysis(){
   isAnalyzing = !isAnalyzing;
   if(isAnalyzing) startAnalysis();
@@ -1219,8 +1114,7 @@ function startAnalysis(){
   updateHourTitle();
   updateLogDisplay(true);
 
-  // startAutoSaveHourly(); // ★無効化：定時タイマーは使わない
-  recordEvent();            // ★追加：開始直後の「0台」状態を1行目に記録
+  recordEvent();            
 
   lastInferTime = 0;
 }
@@ -1237,17 +1131,16 @@ function stopAnalysis(){
   countsCurrentHour = zeroCounts();
   recordsHourly = [];
   
-  // ★追加：時刻変数をリセットして、タイトルを「待機中」に戻す
   analysisStartTime = null; 
   hourWindowStart = null;
 
   updateCountUI();
-  updateHourTitle(); // ここで上記修正1が動き、「測定待機中」と表示される
+  updateHourTitle(); 
   updateLogDisplay(true);
   mainRenderLoop();
 }
 
-/* ========= 測定予約 ========= */
+// 予約測定機能
 async function handleReservation(){
   try{
     await getGeolocation();
@@ -1281,7 +1174,7 @@ function applySchedule(){
   else toast("予約可能な日時が設定されていません", true);
 }
 
-/* ========= 位置情報 ========= */
+// 位置情報取得
 function getGeolocation(){
   return new Promise((resolve, reject)=>{
     if(!navigator.geolocation){
@@ -1310,7 +1203,7 @@ function getGeolocation(){
   });
 }
 
-/* ========= カメラ ========= */
+// カメラ・キャンバス設定
 async function setupCamera(){
   const stream = await navigator.mediaDevices.getUserMedia({
     video: { facingMode: { ideal: "environment" } },
@@ -1331,119 +1224,90 @@ function adjustCanvasSize(){
   const h = DOM.video.videoHeight;
   if(!w || !h) return;
 
-  // 1. 内部解像度は常に動画の実サイズに合わせる
   DOM.canvas.width = w;
   DOM.canvas.height = h;
 
-  // 2. 画面サイズに応じた表示モードの切り替え
-  // ★修正：PC/スマホ問わず、コンテナ枠を「映像そのものの比率」に強制する
-  // これにより、コンテナ自体が映像サイズに変形するため、黒帯（余白）がなくなります。
   if(DOM.videoContainer) {
     DOM.videoContainer.style.aspectRatio = `${w} / ${h}`;
   }
   
-  // 映像とコンテナが同じ比率になるため、contain でピッタリ収まります
   DOM.video.style.objectFit = "contain";
   DOM.canvas.style.objectFit = "contain";
 
-  // 3. Canvasの表示サイズを100%にする
-  // (getCanvasPointで計算補正するので、ここは100%でOK)
   DOM.canvas.style.width = "100%";
   DOM.canvas.style.height = "100%";
 
-  // ★追加：PC画面のとき、測定ログのボックス高さを「映像の下端」に合わせる計算処理
-  // これにより、ログが増えてもレイアウトが崩れず、表の中でスクロールするようになります
   const infoPanel = document.getElementById("info-panel");
   if (infoPanel) {
     const isPC = window.matchMedia("(min-width: 1024px)").matches;
     
     if (isPC && DOM.videoContainer) {
-      // 1. 映像コンテナの「底（bottom）」の座標を取得
       const videoBottom = DOM.videoContainer.getBoundingClientRect().bottom;
       
-      // 2. ログパネルの「頂上（top）」の座標を取得
       const panelTop = infoPanel.getBoundingClientRect().top;
       
-      // 3. 差分を計算（これがログパネルに許された高さ）
-      // ※微調整のため -2px しています
       const targetHeight = Math.floor(videoBottom - panelTop) - 2;
       
-      // 4. 高さを適用（中身があふれたら info-panel 内の log-display がスクロールします）
       infoPanel.style.height = `${Math.max(0, targetHeight)}px`;
       
     } else {
-      // スマホのときは高さ制限を解除（CSSの指定に戻す）
       infoPanel.style.height = "";
     }
   }
 }
 
 
-/* ========= 追跡器セットアップ ========= */
+// トラッカー初期化
 function setupTracker(){
   tracker = new Tracker({
     iouThreshold: 0.4,
     maxLostAge: Number(DOM.maxLost.value),
 
-    // classicロジック：confirmedで即カウント（従来に近い）
     onConfirmed: (tr)=>{
       if(countLogic !== "classic") return;
       applyCountByMode(tr.cls);
     },
 
-    // roiロジック：1回接触のみの「車両不明」を拾うため
     onRemoved: (tr)=> onTrackRemoved(tr),
   });
 }
 
-/* ========= 統合メインループ（修正後） ========= */
+// メインレンダリングループ
 function mainRenderLoop() {
   const ctx = DOM.ctx;
 
-  // 1. 共通：Canvasをクリアする（映像はブラウザ標準のvideoタグに任せる）
-  // ★変更点：drawImageを廃止し、clearRectに変更（ゼロ・コピー描画）
-  // これによりGPU負荷とバッテリー消費が劇的に下がります。
   ctx.clearRect(0, 0, DOM.canvas.width, DOM.canvas.height);
 
-  // ※ adjustCanvasSize() はループから削除し、イベントリスナー側に任せます
-
-  // 2. 測定中だけ実行する処理
   if (isAnalyzing) {
     const interval = 1000 / Number(DOM.maxFps.value);
     const now = performance.now();
 
-    // ★変更：時間が来ていても、AIがまだ「考え中(isModelBusy)」ならスキップする
-    // これにより、処理落ちしている時に無理やり詰め込んでフリーズするのを防ぎます
     if (!isModelBusy && (now - lastInferTime >= interval)) {
       lastInferTime = now;
-      isModelBusy = true; // ★ロック：準備中フラグを立てる
+      isModelBusy = true; 
 
       model.detect(DOM.video).then(preds => {
         const scoreTh = Number(DOM.scoreTh.value);
-        // 設定した感度以上のものだけ抽出
         const raw = preds.filter(p => UI_CATS.includes(p.class) && p.score >= scoreTh)
                          .map(p => ({ bbox: p.bbox, score: p.score, cls: p.class }));
         
         const dets = filterDetectionsByMode(raw);
         tracker.updateWithDetections(dets);
-        updateRoiCountingForConfirmedTracks(); // ROI内判定
+        updateRoiCountingForConfirmedTracks(); 
       })
       .finally(() => {
-         isModelBusy = false; // ★解除：終わったらフラグを下ろす（次の注文を受け付ける）
+         isModelBusy = false; 
       });
     }
-    // AIの枠（四角）を描画
     drawAllOverlays(ctx); 
   }
 
-  // 3. 測定エリア（白い枠）を常に一番上に描く
   drawRoi(ctx);
 
-  // 次のコマを予約してループさせる
   requestAnimationFrame(mainRenderLoop);
 }
 
-// 枠描画専用の関数（ID非表示 ＆ 残像表示版）
+// 検出枠描画
 function drawAllOverlays(ctx) {
   ctx.save();
   ctx.font = "14px Segoe UI, Arial";
@@ -1451,7 +1315,6 @@ function drawAllOverlays(ctx) {
   const color = { car:"#1e88e5", bus:"#43a047", truck:"#fb8c00", motorcycle:"#8e24aa", bicycle:"#fdd835", person:"#e53935" };
 
   for(const tr of tracker.tracks){
-    // ★修正A：確定していないものだけスキップ（見失ったものも表示する）
     if(tr.state !== "confirmed") continue;
 
     const [x,y,w,h] = tr.bbox;
@@ -1462,7 +1325,6 @@ function drawAllOverlays(ctx) {
 
     const c = color[cls] || "#fff";
 
-    // ★修正B：見失っている（画面端など）場合は半透明にする
     if (tr.lostAge > 0) {
       ctx.globalAlpha = 0.5;
     } else {
@@ -1472,7 +1334,6 @@ function drawAllOverlays(ctx) {
     ctx.strokeStyle = c;
     ctx.strokeRect(x,y,w,h);
     
-    // ★修正C：ID（[#123]）を削除し、確信度だけにしました
     const label = `${cls} ${Math.floor(tr.score*100)}%`; 
 
     ctx.fillStyle = "rgba(0,0,0,0.6)";
@@ -1480,49 +1341,38 @@ function drawAllOverlays(ctx) {
     ctx.fillStyle = "#fff";
     ctx.fillText(label, x+3, Math.max(10, y-4));
     
-    // 透明度を戻す
     ctx.globalAlpha = 1.0;
   }
   ctx.restore();
 }
 
-/* ========= ログ/CSV ========= */
-
-// モードに合わせて表の列（ヘッダー）を表示/非表示にする関数
+// ログテーブル表示制御
 function updateLogTableVisibility() {
   const table = document.getElementById("log-table");
   if (!table) return;
 
-  // ★追加：準備ができたら「ロード中クラス」を外す（これで文字が表示される）
   table.classList.remove("is-loading");
 
   const ths = table.querySelectorAll("thead th");
-  // thsの並び順: [0]日時, [1]乗用車, [2]バス, [3]トラック, [4]バイク, [5]自転車, [6]歩行者
   
   if (countMode === "pedestrian") {
-    // 歩行者モード：車両系(1～5)を非表示、歩行者(6)を表示
     for (let i = 1; i <= 5; i++) ths[i].style.display = "none";
     ths[6].style.display = "table-cell";
   } else {
-    // 車両モード：車両系(1～5)を表示、歩行者(6)を非表示
     for (let i = 1; i <= 5; i++) ths[i].style.display = "table-cell";
     ths[6].style.display = "none";
   }
 
-  // 列の表示が変わったので、中身も書き直す
   rebuildLogTable(); 
 }
 
-// ログテーブルの中身を再構築する関数
 function rebuildLogTable() {
   DOM.logBody.innerHTML = "";
-  // 新しい順に表示
   [...recordsHourly].reverse().forEach(row => {
     insertLogRow(row);
   });
 }
 
-// 行を作成して挿入するヘルパー関数
 function insertLogRow(row, prepend=false){
   const tr = document.createElement("tr");
   
@@ -1530,10 +1380,8 @@ function insertLogRow(row, prepend=false){
   let cells = "";
 
   if(countMode === "pedestrian"){
-    // 歩行者モード用の行：日時 + 歩行者
     cells = timeCell + `<td>${row.person || 0}</td>`;
   } else {
-    // 車両モード用の行：日時 + 車両5種
     cells = timeCell + 
       `<td>${row.car || 0}</td>` +
       `<td>${row.bus || 0}</td>` +
@@ -1551,7 +1399,6 @@ function insertLogRow(row, prepend=false){
   }
 }
 
-// 既存の updateLogDisplay を修正してヘルパーを使うようにする
 function updateLogDisplay(clear=false){
   if(clear){
     DOM.logBody.innerHTML = "";
@@ -1560,7 +1407,6 @@ function updateLogDisplay(clear=false){
   const last = recordsHourly[recordsHourly.length-1];
   if(!last) return;
 
-  // 新しい共通関数を使って行を追加
   insertLogRow(last, true);
   
   while(DOM.logBody.children.length > MAX_LOGS){
@@ -1569,13 +1415,11 @@ function updateLogDisplay(clear=false){
 }
 
 function updateHourTitle(){
-  // ★修正：まだ開始していない（かつ復旧データもない）場合は「待機中」にする
   if (!analysisStartTime) {
     DOM.hourTitle.textContent = "測定待機中";
     return;
   }
 
-  // 開始時刻がある場合のみ、時刻計算を行う
   const d = analysisStartTime;
   const h = String(d.getHours()).padStart(2,"0");
   const m = String(d.getMinutes()).padStart(2,"0");
@@ -1587,7 +1431,6 @@ function updateHourTitle(){
     return;
   }
 
-  // 車両モード
   const total = getCountedTotalByMode(countsCurrentHour);
   DOM.hourTitle.textContent = `${timeStr}~の交通量：計${total}台`;
 }
@@ -1598,6 +1441,7 @@ function updateCountUI(){
   }
 }
 
+// CSVエクスポート
 async function exportCSV(data, geo, unknown){
   if(!data || data.length === 0){
     toast("出力するデータがありません", true);
@@ -1607,7 +1451,6 @@ async function exportCSV(data, geo, unknown){
   const endTime = new Date();
   const noun = modeNoun();
 
-  // ▼▼▼ UIのテキストを取得するヘルパー ▼▼▼
   const getUiText = (el) => {
     if(el && el.options && el.selectedIndex >= 0){
       return el.options[el.selectedIndex].text;
@@ -1615,7 +1458,6 @@ async function exportCSV(data, geo, unknown){
     return "";
   };
 
-  // ▼▼▼ メタデータ（ここだけに残す） ▼▼▼
   const metadata = [
     `緯度: ${geo.lat}`,
     `経度: ${geo.lng}`,
@@ -1631,7 +1473,6 @@ async function exportCSV(data, geo, unknown){
   let rows = "";
 
   if(countMode === "pedestrian"){
-    // 歩行者モード
     header = "日時,歩行者\n"; 
     
     rows = data.map(r => {
@@ -1640,7 +1481,6 @@ async function exportCSV(data, geo, unknown){
     }).join("\r\n");
 
   } else {
-    // 車両モード
     header = "日時,乗用車,バス,トラック,バイク,自転車,合計\n";
     
     rows = data.map(r => {
@@ -1650,7 +1490,6 @@ async function exportCSV(data, geo, unknown){
       const moto  = r.motorcycle ?? 0;
       const bici  = r.bicycle ?? 0;
 
-      // シンプルに合計
       const total = car + bus + truck + moto + bici;
 
       return `"${r.timestamp}",${car},${bus},${truck},${moto},${bici},${total}`;
@@ -1684,8 +1523,8 @@ function fileNameFromDate(d, noun){
   return `${kind}_${y}${m}${da}_${h}${mi}${s}.csv`;
 }
 
+// ユーティリティ関数
 function toast(msg, isError=false){
-  // toast要素が無い/HTMLが途中で欠けている場合でも、アプリ全体が止まらないようにガード
   if(!DOM.toast){
     console.warn("[toast] element not found:", msg);
     return;
@@ -1706,12 +1545,9 @@ function formatTimestamp(d){
   return `${y}/${m}/${da} ${h}:${mi}:${s}`;
 }
 
-/* =========================================
-   ROI固定（測定開始後は編集不可） 修正版
-   ========================================= */
+// ROIロック機能
 (function lockRoiAfterStartPatch(){
   try{
-    // 1) start/stop を差し替え
     const _startAnalysis = startAnalysis;
     startAnalysis = function(){
       window.roiLocked = true;
@@ -1725,34 +1561,27 @@ function formatTimestamp(d){
       return r;
     };
 
-    // 2) 測定中は操作をブロック
     const c = DOM.canvas;
     if(!c) return;
 
     const blockIfLocked = (ev)=>{
-      // ピクチャインピクチャ中は無視
       if(DOM.videoContainer && DOM.videoContainer.classList.contains("is-floating")){
         return; 
       }
 
-      // 「測定中」かつ「明示的にロックされている」時だけ判定する
       if(isAnalyzing && window.roiLocked === true){
         
-        // ★修正点：クリック/タップした位置が「ROIの四隅」かどうか計算する
         const rect = c.getBoundingClientRect();
-        // 内部解像度と表示サイズの比率計算
         const scale = (c.width || 1) / rect.width; 
         
         const mx = (ev.clientX - rect.left) * scale;
         const my = (ev.clientY - rect.top) * scale;
         
-        const pts = getRoiPx(); // 現在のROI座標を取得
+        const pts = getRoiPx(); 
         let isHit = false;
         
-        // 判定半径（setupRoiDragの設定に合わせる：タッチ40px相当）
         const hitRadius = 40 * scale; 
 
-        // 4つの角のどれかに触れているか？
         for(const p of pts){
            const dist = Math.sqrt((mx - p.x)**2 + (my - p.y)**2);
            if(dist < hitRadius){
@@ -1761,7 +1590,6 @@ function formatTimestamp(d){
            }
         }
 
-        // ★ROIの角に触れた時だけブロック＆トースト表示
         if(isHit){
            ev.preventDefault();
            ev.stopImmediatePropagation();
@@ -1770,17 +1598,13 @@ function formatTimestamp(d){
              toast("測定中は測定枠を変更できません");
            }
         }
-        // ★それ以外の場所（ただの映像エリア）なら何もしない
-        // これにより、スマホでのスクロール操作などが通過するようになります
       }
     };
 
-    // capture: true で、他のイベントより先に判定する
     c.addEventListener("pointerdown", blockIfLocked, true);
     c.addEventListener("pointermove", blockIfLocked, true);
     c.addEventListener("pointerup",   blockIfLocked, true);
     
-    // 初期状態はロック解除
     window.roiLocked = false;
 
   }catch(e){
@@ -1788,11 +1612,7 @@ function formatTimestamp(d){
   }
 })();
 
-/* =========================================
-   測定中：設定をグレーアウト（無効化） 追加のみパッチ
-   - startAnalysis/stopAnalysisを上書きしてフック
-   - 設定項目を disabled にして操作不可
-   ========================================= */
+// 設定無効化機能
 (function disableSettingsWhileRunningPatch(){
   try{
     const SETTINGS_IDS = [
@@ -1810,7 +1630,6 @@ function formatTimestamp(d){
       .map(id=>document.getElementById(id))
       .filter(Boolean);
 
-    // 追加CSS（disabled時に「よりグレー」に見せる：任意）
     if(!document.getElementById("disable-settings-style")){
       const st = document.createElement("style");
       st.id = "disable-settings-style";
@@ -1818,7 +1637,7 @@ function formatTimestamp(d){
         #settings-panel .settings-grid.is-locked{
           opacity: .55;
           filter: grayscale(100%);
-          pointer-events: none; /* クリック自体無効化 */
+          pointer-events: none; 
         }
       `;
       document.head.appendChild(st);
@@ -1827,7 +1646,6 @@ function formatTimestamp(d){
     function setLocked(locked){
       const els = getEls();
       els.forEach(el=>{
-        // 予約ボタン以外は disabled が効く
         if("disabled" in el) el.disabled = !!locked;
       });
 
@@ -1835,7 +1653,6 @@ function formatTimestamp(d){
       if(grid) grid.classList.toggle("is-locked", !!locked);
     }
 
-    // すでにパッチされてる start/stop をさらに包む（上書きでも「中身は呼ぶ」）
     const _start = startAnalysis;
     startAnalysis = function(){
       setLocked(true);
@@ -1849,28 +1666,22 @@ function formatTimestamp(d){
       return r;
     };
 
-    // 初期状態は解除
     setLocked(false);
   }catch(e){
     console.warn("Disable settings patch failed:", e);
   }
 })();
-/* =========================================
-   測定中：スリープ抑止（Screen Wake Lock） 追加のみパッチ
-   - Android Chrome/Edge等で有効
-   - iOS Safariは未対応の場合が多い
-   ========================================= */
+
+// スリープ抑止機能
 (function wakeLockPatch(){
   let wakeLock = null;
 
   async function requestWakeLock(){
     try{
       if(!("wakeLock" in navigator) || !navigator.wakeLock?.request){
-        // 未対応（iOS Safariなど）
         return false;
       }
       wakeLock = await navigator.wakeLock.request("screen");
-      // 解除イベント（OS側で切れる場合がある）
       wakeLock.addEventListener("release", ()=>{
         wakeLock = null;
       });
@@ -1893,17 +1704,14 @@ function formatTimestamp(d){
     }
   }
 
-  // 画面が戻ってきたら再取得（OSが勝手に解除することがある）
   document.addEventListener("visibilitychange", async ()=>{
     if(document.visibilityState === "visible" && (isAnalyzing === true)){
       await requestWakeLock();
     }
   });
 
-  // start/stop を包む（既存は消さない）
   const _start = startAnalysis;
   startAnalysis = function(){
-    // ユーザー操作直後のタイミングが一番通りやすい
     requestWakeLock().then(ok=>{
       if(!ok) toast("スリープ抑止が非対応の端末です");
     });
@@ -1917,43 +1725,31 @@ function formatTimestamp(d){
   };
 })();
 
-/* =========================================
-   クラッシュ対策＆リアルタイム更新パッチ (v5 完成版)
-   - 修正1: 「計〇〇人」の表示をリアルタイムに更新（カードと同期）
-   - 修正2: メモリ対策（終了時・CSV保存時にバックアップ削除）
-   - 修正3: クラッシュ/リロード時はデータを保持して復旧
-   ========================================= */
+// データバックアップ・復旧機能
 (function crashProtectionPatch() {
   const BACKUP_KEY = "trafficCounter_crash_backup_v1";
-  let isResumed = false; // 復旧モード待機フラグ
+  let isResumed = false; 
   let backupInterval = null;
 
-  // --- 1. UIのリアルタイム同期 ---
-  let saveDebounceTimer = null; // ★追加：遅延タイマー変数
+  let saveDebounceTimer = null; 
 
   const _updateCountUI = updateCountUI;
   updateCountUI = function() {
     _updateCountUI.apply(this, arguments);
     try {
       
-      // ★変更点：即時保存(saveBackup)をやめ、1秒間の「溜め」を作る（スマート・セーブ）
-      // これにより、連続カウント時のディスク書き込み負荷(ラグ)をゼロにします。
       if(saveDebounceTimer) clearTimeout(saveDebounceTimer);
       saveDebounceTimer = setTimeout(saveBackup, 1000); 
 
     } catch(e) {}
   };
 
-  // ★追加：タブを閉じる直前などは待たずに即保存してデータを守る
   window.addEventListener("pagehide", () => {
     if(saveDebounceTimer) clearTimeout(saveDebounceTimer);
     saveBackup();
   });
 
-  // --- 2. バックアップ保存・読込・削除関数 ---
-
   function saveBackup() {
-    // 測定中、または復旧待機中なら保存する
     if (!isAnalyzing && !isResumed) return;
 
     try {
@@ -1978,14 +1774,12 @@ function formatTimestamp(d){
 
       const data = JSON.parse(json);
       
-      // 変数に展開
       countsCurrentHour = data.countsCurrentHour || zeroCounts();
       recordsHourly = data.recordsHourly || [];
       
       if (data.analysisStartTime) analysisStartTime = new Date(data.analysisStartTime);
       if (data.hourWindowStart) hourWindowStart = new Date(data.hourWindowStart);
 
-      // モード復元
       if (data.countMode) {
         countMode = data.countMode;
         if(DOM.countModeSelect) DOM.countModeSelect.value = normalizeMode(countMode);
@@ -2001,26 +1795,21 @@ function formatTimestamp(d){
     try { localStorage.removeItem(BACKUP_KEY); } catch(e) {}
   }
 
-  // --- 3. 起動時の復元チェック ---
   if (loadBackup()) {
     isResumed = true;
-    // ロード完了後に通知とUI更新
     window.addEventListener("load", () => {
        updateCountUI(); 
        rebuildLogTable(); 
        toast("前回のデータを復元しました。\n「開始」で測定を再開します。", true);
 
-       // ★追加：データ不整合を防ぐため、モード変更プルダウンだけはロックする
        const modeSel = document.getElementById("count-mode");
        if(modeSel) modeSel.disabled = true;
     });
   }
 
-  // --- 4. startAnalysisをフック（開始時の挙動） ---
   const _start = startAnalysis;
   startAnalysis = function() {
     if (isResumed) {
-      // ★復旧モード：変数をリセットせず維持
       const savedData = {
         c: countsCurrentHour,
         rh: recordsHourly,
@@ -2030,18 +1819,15 @@ function formatTimestamp(d){
 
       const ret = _start.apply(this, arguments);
 
-      // 変数を書き戻す
       countsCurrentHour = savedData.c;
       recordsHourly = savedData.rh;
       analysisStartTime = savedData.as;
       hourWindowStart = savedData.hw;
 
-      // UI再反映
       isResumed = false;
       updateCountUI(); 
       rebuildLogTable(); 
       
-      // ★追加：復元した「元の開始時刻」を使ってタイトルを再描画する
       updateHourTitle(); 
 
       toast("中断箇所から測定を再開しました");
@@ -2050,7 +1836,6 @@ function formatTimestamp(d){
       return ret;
 
     } else {
-      // ★通常開始
       const ret = _start.apply(this, arguments);
       saveBackup(); 
       startBackupLoop();
@@ -2058,41 +1843,34 @@ function formatTimestamp(d){
     }
   };
 
-  // --- 5. stopAnalysisをフック（停止ボタン＝削除） ---
   const _stop = stopAnalysis;
   stopAnalysis = function() {
     stopBackupLoop();
-    clearBackup(); // ★ご要望通り削除
+    clearBackup(); 
     return _stop.apply(this, arguments);
   };
 
-  // --- 6. exportCSVをフック（CSV保存完了＝削除） ---
   const _exportCSV = exportCSV;
   exportCSV = async function() {
     try {
-      // 1. まずはCSVの保存を試みる
       await _exportCSV.apply(this, arguments);
       
-      // 2. 保存が無事に完了した（エラーが起きなかった）場合のみ、バックアップを消す
       clearBackup(); 
     } catch (e) {
-      // 3. もし保存に失敗したら、データを守るためにバックアップは残す
       console.error("CSV出力エラー:", e);
       toast("出力に失敗したため、データを保持します", true);
     }
   };
 
-  // --- 7. バックアップ間隔制御 ---
   function startBackupLoop() {
     if (backupInterval) clearInterval(backupInterval);
-    backupInterval = setInterval(saveBackup, 60000); // ここは60000でOK
+    backupInterval = setInterval(saveBackup, 60000); 
   }
 
   function stopBackupLoop() {
     if (backupInterval) { clearInterval(backupInterval); backupInterval = null; }
   }
 
-  // 画面が隠れたり閉じたりする瞬間に強制保存
   window.addEventListener("visibilitychange", () => {
     if (document.visibilityState === 'hidden') saveBackup();
   });
@@ -2101,20 +1879,15 @@ function formatTimestamp(d){
 
 })();
 
-/* =========================================
-   スクロール連動：ミニプレーヤー化 ＆ ドラッグ移動 ＆ 閉じるボタン (修正版)
-   ========================================= */
+// フローティングプレーヤー機能
 (function floatingPlayerPatch(){
   const container = document.getElementById("video-container");
   if(!container) return;
 
-  // 1. 閉じるボタンの挙動設定
   const closeBtn = document.getElementById("close-float-btn"); 
   let isClosedManually = false;
 
   if(closeBtn){
-    // ★追加: ボタン自体は pointer-events を有効にする
-    // (CSSで canvas に pointer-events: none をかけたため、ボタンだけ操作可能にする)
     closeBtn.style.pointerEvents = "auto";
 
     closeBtn.addEventListener("click", (e)=>{
@@ -2127,14 +1900,12 @@ function formatTimestamp(d){
     closeBtn.addEventListener("pointerdown", (e)=> e.stopPropagation());
   }
 
-  // Helper: フロート解除処理
   function disableFloating(){
     container.classList.remove("is-floating");
     
     const ph = document.getElementById("video-placeholder");
     if(ph) ph.style.display = "none";
     
-    // スタイルをリセット
     container.style.transform = "";
     container.style.left = "";
     container.style.top = "";
@@ -2144,7 +1915,6 @@ function formatTimestamp(d){
     container.style.height = "";
   }
 
-  // 2. プレースホルダー
   let placeholder = document.getElementById("video-placeholder");
   if(!placeholder){
     placeholder = document.createElement("div");
@@ -2154,7 +1924,6 @@ function formatTimestamp(d){
     container.parentNode.insertBefore(placeholder, container);
   }
 
-  // 3. 監視マーカー
   let sentinel = document.getElementById("video-sentinel");
   if(!sentinel){
     sentinel = document.createElement("div");
@@ -2167,14 +1936,12 @@ function formatTimestamp(d){
     container.parentNode.insertBefore(sentinel, container.nextSibling);
   }
 
-  // 4. スクロール監視
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       if(container.offsetHeight > 0 && !container.classList.contains("is-floating")){
          placeholder.style.height = container.offsetHeight + "px";
       }
 
-      // 画面上部に消えたらPinP化
       if (!entry.isIntersecting && entry.boundingClientRect.top < 0) {
         if (!isClosedManually && !container.classList.contains("is-floating")) {
           placeholder.style.display = "block"; 
@@ -2184,7 +1951,6 @@ function formatTimestamp(d){
           container.style.width = "45vw"; 
         }
       } else {
-        // 画面内に戻ったら解除
         isClosedManually = false;
         if (container.classList.contains("is-floating")) {
           disableFloating();
@@ -2195,16 +1961,13 @@ function formatTimestamp(d){
 
   observer.observe(sentinel);
 
-  // 5. ドラッグ移動ロジック (スマホ最適化)
   let isDragging = false;
   let startX, startY, startLeft, startTop;
 
-  // コンテナに対する pointerdown
   container.addEventListener("pointerdown", (e) => {
     if (!container.classList.contains("is-floating")) return;
     if (e.target === closeBtn || closeBtn.contains(e.target)) return;
 
-    // ★重要: ブラウザのデフォルト動作（スクロールなど）を殺す
     e.preventDefault(); 
     e.stopPropagation();
 
@@ -2215,8 +1978,6 @@ function formatTimestamp(d){
 
     const rect = container.getBoundingClientRect();
     
-    // 現在の位置を「左上基準」の座標に変換してセット
-    // (bottom/right指定から top/left指定へ切り替え)
     container.style.bottom = "auto";
     container.style.right = "auto";
     container.style.left = rect.left + "px";
@@ -2231,12 +1992,11 @@ function formatTimestamp(d){
 
   container.addEventListener("pointermove", (e) => {
     if (!isDragging) return;
-    e.preventDefault(); // スクロール抑止
+    e.preventDefault(); 
 
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
 
-    // requestAnimationFrameを使わず直接反映（追従性優先）
     container.style.left = `${startLeft + dx}px`;
     container.style.top = `${startTop + dy}px`;
   });
